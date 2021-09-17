@@ -10,6 +10,12 @@ Firebase Cloud Functions with Typescript:
 Xero API:
 - https://developer.xero.com/documentation/api/accounting/overview/
 
+Xero AuthFlow:
+- https://developer.xero.com/documentation/guides/oauth2/auth-flow#xero-tenants
+
+Xero BankTransactions API:
+- https://developer.xero.com/documentation/api/accounting/banktransactions
+
 Firebase Environment Configuration:
 - https://firebase.google.com/docs/functions/config-env
 
