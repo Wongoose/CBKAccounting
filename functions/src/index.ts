@@ -9,9 +9,13 @@ import * as functions from "firebase-functions";
 // });
 
 export const inputXeroApi = functions.https.onRequest((request, response) => {
-  const {adminApiKey, adminEmail} = request.body;
-  functions.logger.info("Api Key is: " + adminApiKey);
-  functions.logger.info("Admin Email is: " + adminEmail);
+  // const queryString = request.url;
+  // const urlParams = new URLSearchParams(queryString);
+
+  // const apiKey = urlParams.get("api-key");
+
+  functions.logger.info("Api Key is: " + request.query.apiKey);
+  // functions.logger.info("Admin Email is: " + adminEmail);
 
   response.status(200).send("Successful!");
 });
