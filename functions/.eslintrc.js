@@ -28,5 +28,10 @@ module.exports = {
     "quotes": ["error", "double"],
     "import/no-unresolved": 0,
     "linebreak-style": 0,
+    "object-curly-spacing": 0,
+    "max-len": 0,
+    "space-before-function-paren": 0,
+    "guard-for-in": 0,
+    "padded-blocks": 0,
   },
 };
