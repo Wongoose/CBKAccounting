@@ -1,10 +1,13 @@
 import * as functions from "firebase-functions";
 import "./config/csvFile";
 // import express = require("express");
+// import { readFile } from "fs";
+import * as Papa from "papaparse";
 import Busboy = require("busboy");
 import path = require("path");
 import os = require("os");
 import fs = require("fs");
+// import temp = require("busboy");
 
 exports.inputXeroApi = functions.https.onRequest((request, response) => {
   if (request.method !== "POST") {
@@ -64,11 +67,59 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
   busboy.on("finish", async () => {
     await Promise.all(fileWrites);
     console.log("Busboy FINISH! Process saved files here");
-    console.log(uploads);
-    // console.log("File: " +  );
-    /**
-     * TODO(developer): Process saved files here
-     */
+    console.log(uploads["testData"]);
+
+    const tempFilePath = uploads["testData"];
+
+
+    // Function to read csv which returns a promise so you can do async / await.
+
+    const readCSV = async (filePath: fs.PathOrFileDescriptor) => {
+      const csvFile = fs.readFileSync(filePath);
+      const csvData = csvFile.toString();
+      return new Promise((resolve) => {
+        Papa.parse((csvData), {
+          header: true,
+          complete: (results: any) => {
+            console.log("Complete", results.data.length, "records.");
+            resolve(results.data);
+          },
+        });
+      });
+    };
+
+    const convertToJson = async () => {
+      //parsedData is a list of JSON
+      const parsedData: any = await readCSV(tempFilePath);
+      console.log("parsedData is index 0: \n" + parsedData);
+      //JSON of index 0 transaction
+      console.log(parsedData[0]);
+      console.log("parsedData is index 1: \n" + parsedData);
+      console.log(parsedData[1]);
+    };
+
+    convertToJson();
+
+
+    // readFile(tempFile, (err, data) => {
+    //   if (err) return console.log(err);
+    //   console.log(data);
+    //   const file = fs.createReadStream(tempFile);
+    //   const count = 0; // cache the running count
+    //   Papa.parse(file, {
+    //     worker: true, // Don"t bog down the main thread if its a big file
+    //     step: function (result) {
+    //       console.log("Papaparse result: " + result);
+    //       // do stuff with result
+    //     },
+    //     complete: function (results, file) {
+    //       console.log("parsing complete read", count, "records.");
+    //       console.log("Papaparse complete: " + file);
+    //     },
+    //   });
+    //   // console.log("Papaparse data is: " + Papa.parse(tempFile).data);
+    // });
+
     for (const file in uploads) {
       fs.unlinkSync(uploads[file]);
     }
