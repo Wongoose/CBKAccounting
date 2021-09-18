@@ -1,0 +1,21 @@
+{
+    "bankTransactions": [
+        {
+            "type": "BankTransaction.TypeEnum.SPEND",
+            "contact": {
+                "contactID": "00000000-0000-0000-0000-000000000000"
+            },
+            "lineItems": [
+                {
+                    "description": "Foobar",
+                    "quantity": 1.0,
+                    "unitAmount": 20.0,
+                    "accountCode": "000"
+                }
+            ],
+            "bankAccount": {
+                "code": "000"
+            }
+        }
+    ]
+}
