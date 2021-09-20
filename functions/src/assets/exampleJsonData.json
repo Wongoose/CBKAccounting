@@ -1,20 +1,22 @@
 {
     "bankTransactions": [
         {
-            "type": "BankTransaction.TypeEnum.SPEND",
-            "contact": {
-                "contactID": "00000000-0000-0000-0000-000000000000"
+            "Type": "SPEND",
+            "Contact": {
+                "Name": "h39eh3e-3dej3dj3",
+                "ContactID": "dsdsd"
             },
-            "lineItems": [
+            "LineItems": [
                 {
                     "description": "Foobar",
                     "quantity": 1.0,
                     "unitAmount": 20.0,
-                    "accountCode": "000"
+                    "accountCode": "404"
                 }
             ],
-            "bankAccount": {
-                "code": "000"
+            "BankAccount": {
+                "AccountID": "00000000-0000-0000-0000-000000000000",
+                "code": "BANK-ipay88"
             }
         }
     ]
