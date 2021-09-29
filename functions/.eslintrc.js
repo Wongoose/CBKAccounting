@@ -33,5 +33,9 @@ module.exports = {
     "space-before-function-paren": 0,
     "guard-for-in": 0,
     "padded-blocks": 0,
+    "indent": 0,
+    "camelcase": 0,
+    "@typescript-eslint/no-var-requires": 0,
+    "@typescript-eslint/no-empty-function": 0,
   },
 };
