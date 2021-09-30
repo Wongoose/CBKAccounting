@@ -11,38 +11,49 @@ import base64 = require("base-64");
 
 import config from "./config/config";
 
+import admin = require("firebase-admin");
+
+admin.initializeApp();
+const db = admin.firestore();
+
 const client_id = config.client_id;
 const client_secret = config.client_secret;
 
 console.log("Client ID is: " + client_id);
 console.log("Client Secret is: " + client_secret);
 
-// type Parameters = {
-//   response_type: string;
-//   client_id: string;
-//   scope: string;
-//   redirect_uri: string;
-//   state: string;
-// }
+const cbkAccountingCollection = db.collection("CBKAccounting");
+
+const global_redirect_uri = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
+// const global_redirect_uri = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
+
+type Parameters = {
+  client_id: string | undefined;
+  client_secret: string | undefined,
+  access_token?: string,
+  refresh_token?: string,
+  redirect_uri?: string;
+  response_type?: string;
+  scope?: string;
+  state?: string;
+}
 
 // let globalParams = {
 //   currentAccessToken: "",
 //   currentRefreshToken: "",
 // }
 exports.xeroAuth = functions.https.onRequest((request, response) => {
-  const params = {
+  const params: Parameters = {
     client_id: client_id,
     client_secret: client_secret,
     response_type: "code",
     scope: "accounting.transactions",
-    // redirect_uri: "https://cbkaccounting.com/redirect",
-    redirect_uri: "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl",
     state: "12345678",
   };
   functions.logger.info("Client ID is: " + client_id);
   functions.logger.info("Client Secret is: " + client_secret);
-  console.log("Params is: " + JSON.stringify(params));
-  const url = `https://login.xero.com/identity/connect/authorize?response_type=${params.response_type}&client_id=${params.client_id}&redirect_uri=${params.redirect_uri}&scope=${params.scope}&state=${params.state}`;
+  // console.log("Params is: " + JSON.stringify(params));
+  const url = `https://login.xero.com/identity/connect/authorize?response_type=${params.response_type}&client_id=${params.client_id}&redirect_uri=${global_redirect_uri}&scope=${params.scope}&state=${params.state}`;
   console.log("URL is: " + url);
   // const options = {
   //   path: url,
@@ -53,14 +64,86 @@ exports.xeroAuth = functions.https.onRequest((request, response) => {
 });
 
 exports.xeroRedirectUrl = functions.https.onRequest((request, response) => {
-  console.log("Redirected with request body: " + JSON.stringify(request.body));
-  console.log("Redirected with response: " + response);
-  functions.logger.info("Redirected with request body: " + JSON.stringify(request.body));
-  functions.logger.info("Redirected with response: " + response);
+
+  const exchangeCode = request.query.code;
+  const requestError = request.query.error;
+  response.status(200).send("Done. Successful!");
+
+
+  if (requestError) {
+    // has error
+    // response.status(404).send("An error has occured. Please try again.");
+  } else if (exchangeCode) {
+    console.log("Redirected with request code: " + exchangeCode);
+    functions.logger.info("Redirected with request code: " + exchangeCode);
+
+    const params: Parameters = {
+      client_id: client_id,
+      client_secret: client_secret,
+    };
+
+    const url = "https://identity.xero.com/connect/token";
+    const options = {
+      path: url,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": "Basic " + base64.encode(`${params.client_id}:${params.client_secret}`),
+      },
+      body: `grant_type=authorization_code&code=${exchangeCode}&redirect_uri=${global_redirect_uri}`,
+      // body: `grant_type=authorization_code&code=${exchangeCode}&redirect_uri=global_redirect_uri`,
+    };
+
+    nodeRequest.post(url, options, async function (err, res, body) {
+      console.log("error:", err);
+      console.log("statusCode:", res && res.statusCode);
+      console.log("body:", body);
+
+      if (res.statusCode == 200) {
+        // response.status(200).send("Done. Successful!");
+        console.log("xerRedirectUrl | Proceed with execution");
+        const resultBody: Record<string, string> = JSON.parse(body);
+        const newAccessToken: string = resultBody["access_token"];
+        const newRefreshToken: string = resultBody["refresh_token"];
+        console.log("New Access Token: " + newAccessToken);
+        console.log("New Refresh Token: " + newRefreshToken);
+
+        await cbkAccountingCollection.doc("tokens").update({
+          "access_token": newAccessToken,
+          "refresh_token": newRefreshToken,
+        });
+
+        // getTenantConnections
+        const tenantUrl = "http://localhost:5001/cbkaccounting/us-central1/xeroGetTenantConnections";
+        const tenantOptions = {
+          path: tenantUrl,
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        };
+
+        nodeRequest.post(tenantUrl, tenantOptions, function (err, response, body) {
+          console.log("POST xeroGetTenantConnections");
+        });
+      }
+
+    });
+  } else {
+    // response.send("Unkown Error!");
+  }
 
 });
 
 exports.xeroGetTenantConnections = functions.https.onRequest(async (request, response) => {
+  let _access_token = "";
+  // let _refresh_token = "";
+
+  await cbkAccountingCollection.doc("tokens").get().then((doc) => {
+    const dataMap: any = doc.data();
+    _access_token = dataMap["access_token"];
+    // _refresh_token = dataMap["refresh_token"];
+  });
   // const params: Parameters = {
   //   response_type: "code",
   //   client_id: "086961535B91473FBBB22C0CABAE3887",
@@ -76,8 +159,8 @@ exports.xeroGetTenantConnections = functions.https.onRequest(async (request, res
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "xero-tenant-id": "4f8b6a62-d826-4dc9-9c43-76cf44175623",
-      "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE2MzI5MDQxNjAsImV4cCI6MTYzMjkwNTk2MCwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6Imh0dHBzOi8vaWRlbnRpdHkueGVyby5jb20vcmVzb3VyY2VzIiwiY2xpZW50X2lkIjoiMDg2OTYxNTM1QjkxNDczRkJCQjIyQzBDQUJBRTM4ODciLCJzdWIiOiI1Y2ExYzk4NjVkZjk1YTk2YmRjNzlhNmE5YjYzZDA0ZCIsImF1dGhfdGltZSI6MTYzMjkwNDE0NywieGVyb191c2VyaWQiOiI5ZmQ0Y2E2OS1lY2QwLTQ1ZDMtOTkxZS05ZDJmMGU3M2I0MDYiLCJnbG9iYWxfc2Vzc2lvbl9pZCI6IjIwMjhlYmEyYWQxZjQ1ZDJiMTc4MDY0ODQ4MmUwMDI2IiwianRpIjoiYWZjOWNhNTRiOWIyYTRjMzk3ZDkyMWZhOGNkNjlkYmMiLCJhdXRoZW50aWNhdGlvbl9ldmVudF9pZCI6IjhiZWQwMWI1LTkyODItNGEyMi05ZTI4LWIwNjQ3OTdmM2U0OSIsInNjb3BlIjpbImFjY291bnRpbmcudHJhbnNhY3Rpb25zIiwib2ZmbGluZV9hY2Nlc3MiXX0.QvyvOcvtX0W60aJ3QR97geJnlkfxIflswof-APMeaVqnkA95aU6SVGdmNV_lSouDGOvm4M8k2elKpKJPn4y9nZxCHCWb8HW_ELRgyNTbTotY5ck2HkKNTGC6tNVIMc0T-qv78RxMMeeiZ_PR-T3jTbkxCaNGtOQutYuG5gX6OQfX4Y8W-16cc0eMuijwZ_Egn3GwFdfUDmFIvZMgmQTYfZkXfcXzRRkQsUYMbSwWEJsKoH7gLui-H9TQOk6qvfe3OdhnpfnkY9ewR1M6ub0IUMXei-1wgXslZQ4YGApLwfvBKFAn7L5NVwv1IS-VVIxYaN9KHXnEHkRX5tDb8t3MBw",
+      // "xero-tenant-id": "4f8b6a62-d826-4dc9-9c43-76cf44175623",
+      "Authorization": `Bearer ${_access_token}`,
     },
   };
 
@@ -85,30 +168,49 @@ exports.xeroGetTenantConnections = functions.https.onRequest(async (request, res
     console.log("error:", err);
     console.log("statusCode:", response && response.statusCode);
     console.log("body:", body);
+
+    if (response.statusCode == 200) {
+      const jsonResponse: Record<string, string> = (JSON.parse(body))[0];
+      console.log("jsonResponse index 0 | is: " + jsonResponse);
+      const xeroTenantId = jsonResponse["tenantId"];
+      console.log("xeroTenantId | is: " + xeroTenantId);
+      cbkAccountingCollection.doc("tokens").update({
+        "xero-tenant-id": xeroTenantId,
+      });
+    }
   });
 
   response.status(200).send("Success");
 });
 
-exports.xeroRefresh = functions.https.onRequest((request, response) => {
+exports.xeroRefresh = functions.https.onRequest(async (request, response) => {
 
-  // const data = JSON.stringify({
-  //   "grant_type": "refresh_token",
-  //   "refresh_token": "412fc934409156afbfae5cd5e6f6143d803e7053dcfa527ca013d7ffd6dc64b6",
-  // });
-  // const formData = {
-  //   "grant_type": "refresh_token",
-  //   "refresh_token": "412fc934409156afbfae5cd5e6f6143d803e7053dcfa527ca013d7ffd6dc64b6",
-  // };
+  let _access_token = "";
+  let _refresh_token = "";
 
-  const params = {
-    access_token: "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE2MzI5MDc5NzcsImV4cCI6MTYzMjkwOTc3NywiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6Imh0dHBzOi8vaWRlbnRpdHkueGVyby5jb20vcmVzb3VyY2VzIiwiY2xpZW50X2lkIjoiMDg2OTYxNTM1QjkxNDczRkJCQjIyQzBDQUJBRTM4ODciLCJzdWIiOiI1Y2ExYzk4NjVkZjk1YTk2YmRjNzlhNmE5YjYzZDA0ZCIsImF1dGhfdGltZSI6MTYzMjkwNDE0NywieGVyb191c2VyaWQiOiI5ZmQ0Y2E2OS1lY2QwLTQ1ZDMtOTkxZS05ZDJmMGU3M2I0MDYiLCJnbG9iYWxfc2Vzc2lvbl9pZCI6IjIwMjhlYmEyYWQxZjQ1ZDJiMTc4MDY0ODQ4MmUwMDI2IiwianRpIjoiYWZjOWNhNTRiOWIyYTRjMzk3ZDkyMWZhOGNkNjlkYmMiLCJhdXRoZW50aWNhdGlvbl9ldmVudF9pZCI6IjhiZWQwMWI1LTkyODItNGEyMi05ZTI4LWIwNjQ3OTdmM2U0OSIsInNjb3BlIjpbImFjY291bnRpbmcudHJhbnNhY3Rpb25zIiwib2ZmbGluZV9hY2Nlc3MiXX0.ljrQW1dJtbkMHYyjiWkPSaEFYDCpBuAvj0f6_8mMJBtE1swfo0yWPP-yB8Bt5zLrp9QSDLnlQEaWiPvcg2G9zz9bGLgH0UnP3Zb6Mq0vCPuU-sXLxFZCqIObhRCPchB7a_JurIu4ixYx1_-8EKCu1rhFh86c1i5g7gkM3wgCY9f3q_en-mwor8TfIMOBddcMr2kDfB2hV6EUEz81dfTftIcGKdsKW1SALWff0Xf8uf1NBegh3rYgEuffLlnLeRIWKjQ3KEn7wNBOqWoUm1B2hKzDceU70CF1ZROkUcq4Q06eX17-p3FWmNS2OlJqpmc25gPpYLcazNrJlw5c2bC5DA",
-    refresh_token: "768ac87e313f6a7f076484a76eb29059dddd46e167e81a5944abda68f351154e",
-    client_id: "086961535B91473FBBB22C0CABAE3887",
-    client_secret: "QYaNrGT2bZ_55emYv2DE2R3xAAhimWQpv_mmo7o2ofbhKO_6",
+  // retrieve from firestore
+  await cbkAccountingCollection.doc("tokens").get().then((doc) => {
+    const dataMap: any = doc.data();
+
+    if (dataMap != null || dataMap != undefined) {
+      // there is data
+      _access_token = dataMap["access_token"];
+      _refresh_token = dataMap["refresh_token"];
+      // console.log("Firestore | Access Token: " + _access_token);
+      // console.log("Firestore | Refresh Token: " + _refresh_token);
+
+    }
+  });
+
+  const params: Parameters = {
+    client_id: client_id,
+    client_secret: client_secret,
+    access_token: _access_token,
+    refresh_token: _refresh_token,
   };
 
   const url = "https://identity.xero.com/connect/token";
+
   const options = {
     method: "POST",
     path: url,
@@ -116,28 +218,166 @@ exports.xeroRefresh = functions.https.onRequest((request, response) => {
       "Content-Type": "application/x-www-form-urlencoded",
       "Authorization": "Basic " + base64.encode(`${params.client_id}:${params.client_secret}`),
     },
-    // formData: formData,
     body: `grant_type=refresh_token&refresh_token=${params.refresh_token}`,
   };
 
-  nodeRequest.post(url, options, function (err, response, body) {
+  nodeRequest.post(url, options, async function (err, response, body) {
     console.log("error:", err);
     console.log("statusCode:", response && response.statusCode);
-    console.log("body:", body);
+    // console.log("body:", body);
 
     if (response.statusCode == 200) {
       console.log("Proceed with execution");
       const resultBody: Record<string, string> = JSON.parse(body);
+      const newAccessToken: string = resultBody["access_token"];
       const newRefreshToken: string = resultBody["refresh_token"];
+      console.log("New Access Token: " + newAccessToken);
       console.log("New Refresh Token: " + newRefreshToken);
+
+      await cbkAccountingCollection.doc("tokens").update({
+        "access_token": newAccessToken,
+        "refresh_token": newRefreshToken,
+      });
     }
 
   });
   response.status(200).send("Success");
 });
 
-exports.xeroExhangeCode = functions.https.onRequest((request, response) => {
+// Call Xero API Functions
+// function createBankAccount(access_token: string, xeroTenantId: string) {
+//   console.log("createBankAccount Ran");
 
+//   const url = "https://api.xero.com/api.xro/2.0/Accounts";
+//   const bodyData = {
+//     "Code": "200",
+//     "Name": "Zheng Xiang Wong",
+//     "Type": "BANK",
+//     "BankAccountNumber": "101012041962",
+//   };
+//   const options = {
+//     method: "PUT",
+//     path: url,
+//     headers: {
+//       "Content-Type": "application/json",
+//       "Authorization": "Bearer " + access_token,
+//       "Xero-Tenant-Id": xeroTenantId,
+//     },
+//     body: JSON.stringify(bodyData),
+//   };
+
+//   nodeRequest.put(url, options, function (err, response, body) {
+//     console.log("error:", err);
+//     console.log("statusCode:", response && response.statusCode);
+//     console.log("body:", body);
+//     console.log("createBankAccount END");
+//   });
+
+
+// }
+
+exports.createBankAccount = functions.https.onRequest(async (request, response) => {
+  let _access_token = "";
+  let _xeroTenantId = "";
+
+  await cbkAccountingCollection.doc("tokens").get().then((doc) => {
+    const dataMap: any = doc.data();
+
+    if (dataMap != null || dataMap != undefined) {
+      // there is data
+      _access_token = dataMap["access_token"];
+      _xeroTenantId = dataMap["xero-tenant-id"];
+      // console.log("Firestore | Access Token: " + _access_token);
+      // console.log("Firestore | Refresh Token: " + _refresh_token);
+      const url = "https://api.xero.com/api.xro/2.0/Accounts";
+      const bodyData = {
+        "Code": "200",
+        "Name": "Zheng Xiang Wong",
+        "Type": "BANK",
+        "BankAccountNumber": "101012041962",
+      };
+      const options = {
+        method: "PUT",
+        path: url,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + _access_token,
+          "Xero-Tenant-Id": _xeroTenantId,
+        },
+        body: JSON.stringify(bodyData),
+      };
+
+      nodeRequest.put(url, options, function (err, response, body) {
+        console.log("error:", err);
+        console.log("statusCode:", response && response.statusCode);
+        console.log("body:", body);
+        console.log("createBankAccount END");
+      });
+
+    }
+  });
+  response.status(200).send("Success");
+
+});
+exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, response) => {
+
+  let _access_token = "";
+  let _xeroTenantId = "";
+
+  await cbkAccountingCollection.doc("tokens").get().then((doc) => {
+    const dataMap: any = doc.data();
+
+    if (dataMap != null || dataMap != undefined) {
+      // there is data
+      _access_token = dataMap["access_token"];
+      _xeroTenantId = dataMap["xero-tenant-id"];
+      // console.log("Firestore | Access Token: " + _access_token);
+      // console.log("Firestore | Refresh Token: " + _refresh_token);
+
+    }
+  });
+
+  const url = "https://api.xero.com/api.xro/2.0/BankTransactions";
+  const bodyData = {
+    "bankTransactions": [
+      {
+        "Type": "SPEND",
+        "Contact": {
+          "Name": "Zheng Xiang Wong",
+        },
+        "LineItems": [
+          {
+            "description": "Paid for fees",
+            "quantity": 1.0,
+            "unitAmount": 200.0,
+            "accountCode": "404",
+          },
+        ],
+        "BankAccount": {
+          "AccountID": "fcf71ac8-6ad0-4aab-b2da-ae79be2d7110",
+          "code": "BANK",
+        },
+      },
+    ],
+  };
+  const options = {
+    method: "PUT",
+    path: url,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + _access_token,
+      "Xero-Tenant-Id": _xeroTenantId,
+    },
+    body: JSON.stringify(bodyData),
+  };
+
+  nodeRequest.put(url, options, function (err, reponse, body) {
+    console.log("error:", err);
+    console.log("statusCode:", response && response.statusCode);
+    console.log("body:", body);
+  });
+
+  response.status(200).send("success");
 });
 
 exports.inputXeroApi = functions.https.onRequest((request, response) => {
