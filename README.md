@@ -21,3 +21,9 @@ Firebase Environment Configuration:
 
 Learn Typescript Youtube:
 - https://www.youtube.com/watch?v=BwuLxPH8IDs
+
+Cloud Functions Google Console Invoker Permission:
+- https://cloud.google.com/functions/docs/securing/authenticating#authenticating_function_to_function_calls
+
+Notes:
+- Multer does not work with Firebase Cloud Functions (https://mikesukmanowsky.com/firebase-file-and-image-uploads/)
