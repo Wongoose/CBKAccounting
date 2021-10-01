@@ -1,20 +1,17 @@
 import * as functions from "firebase-functions";
 import * as Papa from "papaparse";
-// const axios: AxiosInstance = require("axios");
-import Busboy = require("busboy");
-import path = require("path");
-import os = require("os");
-import fs = require("fs");
-
 import nodeRequest = require("request");
 import base64 = require("base-64");
-
 import config from "./config/config";
-
 import admin = require("firebase-admin");
+import Busboy = require("busboy");
+import os = require("os");
+import fs = require("fs");
+import path = require("path"); 
 
 admin.initializeApp();
 const db = admin.firestore();
+const cbkAccountingCollection = db.collection("CBKAccounting");
 
 const client_id = config.client_id;
 const client_secret = config.client_secret;
@@ -22,10 +19,16 @@ const client_secret = config.client_secret;
 console.log("Client ID is: " + client_id);
 console.log("Client Secret is: " + client_secret);
 
-const cbkAccountingCollection = db.collection("CBKAccounting");
-
+const global_xeroAuth = "http://localhost:5001/cbkaccounting/us-central1/xeroAuth";
 const global_redirect_uri = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
+const global_xeroGetTenantConnections = "http://localhost:5001/cbkaccounting/us-central1/xeroGetTenantConnections";
+const global_xeroRefresh = "http://localhost:5001/cbkaccounting/us-central1/xeroRefresh";
+const global_xeroCreateBankTransaction = "http://localhost:5001/cbkaccounting/us-central1/xeroCreateBankTransaction";
+// const global_xeroAuth = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroAuth";
 // const global_redirect_uri = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
+// const global_xeroGetTenantConnections = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroGetTenantConnections";
+// const global_xeroRefresh = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRefresh";
+// const global_xeroCreateBankTransaction = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroCreateBankTransaction";
 
 type Parameters = {
   client_id: string | undefined;
@@ -38,10 +41,6 @@ type Parameters = {
   state?: string;
 }
 
-// let globalParams = {
-//   currentAccessToken: "",
-//   currentRefreshToken: "",
-// }
 exports.xeroAuth = functions.https.onRequest((request, response) => {
   const params: Parameters = {
     client_id: client_id,
@@ -50,16 +49,10 @@ exports.xeroAuth = functions.https.onRequest((request, response) => {
     scope: "accounting.transactions",
     state: "12345678",
   };
-  functions.logger.info("Client ID is: " + client_id);
-  functions.logger.info("Client Secret is: " + client_secret);
-  // console.log("Params is: " + JSON.stringify(params));
+
   const url = `https://login.xero.com/identity/connect/authorize?response_type=${params.response_type}&client_id=${params.client_id}&redirect_uri=${global_redirect_uri}&scope=${params.scope}&state=${params.state}`;
   console.log("URL is: " + url);
-  // const options = {
-  //   path: url,
-  //   method: "POST",
-  // };
-  // response.status(200).send("Success");
+
   response.redirect(301, url);
 });
 
@@ -68,7 +61,6 @@ exports.xeroRedirectUrl = functions.https.onRequest((request, response) => {
   const exchangeCode = request.query.code;
   const requestError = request.query.error;
   response.status(200).send("Success! Updated access_token and tenant_id");
-
 
   if (requestError) {
     // has error
@@ -91,7 +83,6 @@ exports.xeroRedirectUrl = functions.https.onRequest((request, response) => {
         "Authorization": "Basic " + base64.encode(`${params.client_id}:${params.client_secret}`),
       },
       body: `grant_type=authorization_code&code=${exchangeCode}&redirect_uri=${global_redirect_uri}`,
-      // body: `grant_type=authorization_code&code=${exchangeCode}&redirect_uri=global_redirect_uri`,
     };
 
     nodeRequest.post(url, options, async function (err, res, body) {
@@ -114,7 +105,7 @@ exports.xeroRedirectUrl = functions.https.onRequest((request, response) => {
         });
 
         // getTenantConnections
-        const tenantUrl = "http://localhost:5001/cbkaccounting/us-central1/xeroGetTenantConnections";
+        const tenantUrl = global_xeroGetTenantConnections;
         const tenantOptions = {
           path: tenantUrl,
           method: "POST",
@@ -137,29 +128,18 @@ exports.xeroRedirectUrl = functions.https.onRequest((request, response) => {
 
 exports.xeroGetTenantConnections = functions.https.onRequest(async (request, response) => {
   let _access_token = "";
-  // let _refresh_token = "";
 
   await cbkAccountingCollection.doc("tokens").get().then((doc) => {
     const dataMap: any = doc.data();
     _access_token = dataMap["access_token"];
-    // _refresh_token = dataMap["refresh_token"];
   });
-  // const params: Parameters = {
-  //   response_type: "code",
-  //   client_id: "086961535B91473FBBB22C0CABAE3887",
-  //   scope: "accounting.transactions",
-  //   redirect_uri: "https://cbkaccounting.com/redirect",
-  //   state: "12345678",
-  // };
 
-  // const path = `https://login.xero.com/identity/connect/authorize?response_type=${params.response_type}&client_id=${params.client_id}&redirect_uri=${params.redirect_uri}&scope=${params.scope}&state=${params.state}`;
   const path2 = "https://api.xero.com/connections";
   const options = {
     path: path2,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      // "xero-tenant-id": "4f8b6a62-d826-4dc9-9c43-76cf44175623",
       "Authorization": `Bearer ${_access_token}`,
     },
   };
@@ -244,38 +224,7 @@ exports.xeroRefresh = functions.https.onRequest(async (request, response) => {
   response.status(200).send("Success");
 });
 
-// Call Xero API Functions
-// function createBankAccount(access_token: string, xeroTenantId: string) {
-//   console.log("createBankAccount Ran");
-
-//   const url = "https://api.xero.com/api.xro/2.0/Accounts";
-//   const bodyData = {
-//     "Code": "200",
-//     "Name": "Zheng Xiang Wong",
-//     "Type": "BANK",
-//     "BankAccountNumber": "101012041962",
-//   };
-//   const options = {
-//     method: "PUT",
-//     path: url,
-//     headers: {
-//       "Content-Type": "application/json",
-//       "Authorization": "Bearer " + access_token,
-//       "Xero-Tenant-Id": xeroTenantId,
-//     },
-//     body: JSON.stringify(bodyData),
-//   };
-
-//   nodeRequest.put(url, options, function (err, response, body) {
-//     console.log("error:", err);
-//     console.log("statusCode:", response && response.statusCode);
-//     console.log("body:", body);
-//     console.log("createBankAccount END");
-//   });
-
-
-// }
-
+// XERO API FUNCTIONS
 exports.createBankAccount = functions.https.onRequest(async (request, response) => {
   let _access_token = "";
   let _xeroTenantId = "";
@@ -342,37 +291,6 @@ exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, re
   bodyData = JSON.parse(bodyData);
 
   const url = "https://api.xero.com/api.xro/2.0/BankTransactions";
-  // const bodyData = {
-  //   "bankTransactions": [
-  //     {
-  //       "Type": "RECEIVE",
-  //       "Reference": "Paid for annual fees",
-  //       "Date": "2021-10-01",
-  //       "Contact": {
-  //         "Name": "Mr Choo",
-  //         "EmailAddress": "chewys@chumbaka.asia",
-  //         "Phones": [
-  //           {
-  //             "PhoneType": "MOBILE",
-  //             "PhoneNumber": "60163315288",
-  //           },
-  //         ],
-  //         "BankAccountDetails": "ipay88: T074745694522",
-  //       },
-  //       "LineItems": [
-  //         {
-  //           "Description": "Paid for annual fees",
-  //           "Quantity": 1.0,
-  //           "UnitAmount": 300.0,
-  //           "AccountCode": "7319",
-  //         },
-  //       ],
-  //       "BankAccount": {
-  //         "Code": "090",
-  //       },
-  //     },
-  //   ],
-  // };
 
   const options = {
     method: "POST",
@@ -395,7 +313,7 @@ exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, re
 });
 
 exports.inputXeroApi = functions.https.onRequest((request, response) => {
-  // inputXeroApi2 | this function should be called by WebHooks, parsing in the csvFile - POST
+  // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
   if (request.method !== "POST") {
     return response.status(405).end();
   }
@@ -469,25 +387,22 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
     };
 
     // convert to JSON
-
     type XeroTransactionObject = {
       Type: string;
-      Reference: any;
-      Date: any;
+      Reference: string;
+      Date: string;
+      CurrencyCode: string;
       Contact: {
-        Name: any;
-        EmailAddress: any;
+        Name: string;
+        EmailAddress: string;
         Phones: {
           PhoneType: string;
-          PhoneNumber: any;
+          PhoneNumber: string;
         }[];
-        BankAccountDetails: any;
+        BankAccountDetails: string;
       };
       LineItems: {
-        Description: any;
-        Quantity: number;
-        UnitAmount: any;
-        AccountCode: string;
+
       }[];
       BankAccount: {
 
@@ -500,9 +415,10 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
     listOfTransactions.forEach(function (transaction) {
       console.log("Transaction name: " + transaction["Name"]);
       const xeroTransactionObject: XeroTransactionObject = {
-        "Type": "RECEIVE",
+        "Type": transaction["Type"],
         "Reference": transaction["Remarks"],
         "Date": transaction["Date"],
+        "CurrencyCode": transaction["Currency"],
         "Contact": {
           "Name": transaction["Name"],
           "EmailAddress": transaction["Email"],
@@ -518,7 +434,7 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
           {
             "Description": transaction["Remarks"],
             "Quantity": 1.0,
-            "UnitAmount": transaction["Amount Paid"],
+            "UnitAmount": transaction["Amount"],
             "AccountCode": "404",
           },
         ],
@@ -537,7 +453,7 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
       "bankTransactions": listOfFormattedTransactions,
     };
 
-    const url = "http://localhost:5001/cbkaccounting/us-central1/xeroCreateBankTransaction";
+    const url = global_xeroCreateBankTransaction;
 
     const options = {
       method: "POST",
@@ -564,4 +480,3 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
   busboy.end(request.rawBody);
   // END
 });
-
