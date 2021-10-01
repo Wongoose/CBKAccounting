@@ -1,5 +1,5 @@
-ID,Status,iPay88 Transaction ID,Amount Paid,Date,Name,Email,Contact No.,Remarks,Actions
-128,SUCCESS,T074745694521,MYR 1.00,19-Aug-2021 9:51am,Chew,chewys@chumbaka.asia,60124123906,,
-129,SUCCESS,T074745694522,MYR 2.00,20-Aug-2021 9:51am,Choo,chewys@chumbaka.asia,60124123906,,
-130,SUCCESS,T074745694523,MYR 3.00,21-Aug-2021 9:51am,Zhi,chewys@chumbaka.asia,60124123906,,
-131,SUCCESS,T074745694524,MYR 4.00,22-Aug-2021 9:51am,Nigel,chewys@chumbaka.asia,60124123906,,
+ID,Status,TransactionID,Amount Paid,Date,Name,Email,ContactNumber,Remarks,Actions
+128,SUCCESS,T074745694521,1.00,2021-08-21,Chew,chewys@chumbaka.asia,60124123906,For payment,
+129,SUCCESS,T074745694522,2.00,2021-08-22,Choo,chewys@chumbaka.asia,60124123906,Annual Fees,
+130,SUCCESS,T074745694523,3.00,2021-08-23,Zhi,chewys@chumbaka.asia,60124123906,Gift,
+131,SUCCESS,T074745694524,4.00,2021-08-24,Nigel,chewys@chumbaka.asia,60124123906,Chumbaka Fees,

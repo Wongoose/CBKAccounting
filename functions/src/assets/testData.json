@@ -1,0 +1,50 @@
+[
+    {
+        "ID": "129",
+        "Status": "SUCCESS",
+        "iPay88 Transaction ID": "T074745694522",
+        "Amount Paid": "MYR 2.00",
+        "Date": "20-Aug-2021 9: 51am",
+        "Name": "Chew",
+        "Email": "chewys@chumbaka.asia",
+        "Contact No.": "60124123906",
+        "Remarks": "",
+        "Actions": ""
+    },
+    {
+        "Type": "type_of_payment",
+        "Date": "format YYYY-MM-DD",
+        "Code": "xero_bank_code"
+    },
+    {
+        "bankTransactions": [
+            {
+                "Type": "RECEIVE",
+                "Reference": "Paid for annual fees",
+                "Date": "2021-10-01",
+                "Contact": {
+                    "Name": "Mr Choo",
+                    "EmailAddress": "chewys@chumbaka.asia",
+                    "Phones": [
+                        {
+                            "PhoneType": "MOBILE",
+                            "PhoneNumber": "60163315288"
+                        }
+                    ],
+                    "BankAccountDetails": "ipay88: T074745694522"
+                },
+                "LineItems": [
+                    {
+                        "Description": "Paid for annual fees",
+                        "Quantity": 1.0,
+                        "UnitAmount": 300.0,
+                        "AccountCode": "1575"
+                    }
+                ],
+                "BankAccount": {
+                    "Code": "090"
+                }
+            }
+        ]
+    }
+]

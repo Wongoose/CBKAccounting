@@ -67,7 +67,7 @@ exports.xeroRedirectUrl = functions.https.onRequest((request, response) => {
 
   const exchangeCode = request.query.code;
   const requestError = request.query.error;
-  response.status(200).send("Done. Successful!");
+  response.status(200).send("Success! Updated access_token and tenant_id");
 
 
   if (requestError) {
@@ -337,31 +337,45 @@ exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, re
     }
   });
 
+  let bodyData = request.rawBody.toString();
+  console.log("Request Raw Body is: " + JSON.parse(bodyData));
+  bodyData = JSON.parse(bodyData);
+
   const url = "https://api.xero.com/api.xro/2.0/BankTransactions";
-  const bodyData = {
-    "bankTransactions": [
-      {
-        "Type": "SPEND",
-        "Contact": {
-          "Name": "Zheng Xiang Wong",
-        },
-        "LineItems": [
-          {
-            "description": "Paid for fees",
-            "quantity": 1.0,
-            "unitAmount": 200.0,
-            "accountCode": "404",
-          },
-        ],
-        "BankAccount": {
-          "AccountID": "fcf71ac8-6ad0-4aab-b2da-ae79be2d7110",
-          "code": "BANK",
-        },
-      },
-    ],
-  };
+  // const bodyData = {
+  //   "bankTransactions": [
+  //     {
+  //       "Type": "RECEIVE",
+  //       "Reference": "Paid for annual fees",
+  //       "Date": "2021-10-01",
+  //       "Contact": {
+  //         "Name": "Mr Choo",
+  //         "EmailAddress": "chewys@chumbaka.asia",
+  //         "Phones": [
+  //           {
+  //             "PhoneType": "MOBILE",
+  //             "PhoneNumber": "60163315288",
+  //           },
+  //         ],
+  //         "BankAccountDetails": "ipay88: T074745694522",
+  //       },
+  //       "LineItems": [
+  //         {
+  //           "Description": "Paid for annual fees",
+  //           "Quantity": 1.0,
+  //           "UnitAmount": 300.0,
+  //           "AccountCode": "7319",
+  //         },
+  //       ],
+  //       "BankAccount": {
+  //         "Code": "090",
+  //       },
+  //     },
+  //   ],
+  // };
+
   const options = {
-    method: "PUT",
+    method: "POST",
     path: url,
     headers: {
       "Content-Type": "application/json",
@@ -371,7 +385,7 @@ exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, re
     body: JSON.stringify(bodyData),
   };
 
-  nodeRequest.put(url, options, function (err, reponse, body) {
+  nodeRequest.post(url, options, function (err, reponse, body) {
     console.log("error:", err);
     console.log("statusCode:", response && response.statusCode);
     console.log("body:", body);
@@ -439,7 +453,7 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
     const readCSV = async (filePath: fs.PathOrFileDescriptor) => {
       const csvFile = fs.readFileSync(filePath);
       const csvData = csvFile.toString();
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<Record<string, string>[]>((resolve, reject) => {
         try {
           Papa.parse((csvData), {
             header: true,
@@ -453,23 +467,98 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
         }
       });
     };
-    // just using functions for now
-    const convertToJson = async () => {
-      const parsedData: any = await readCSV(tempFilePath);
-      // shows bankTransaction 1
-      console.log("parsedData is index 0: \n" + parsedData);
-      console.log(parsedData[0]);
-      // shows bankTransaction 2
-      console.log("parsedData is index 1: \n" + parsedData);
-      console.log(parsedData[1]);
+
+    // convert to JSON
+
+    type XeroTransactionObject = {
+      Type: string;
+      Reference: any;
+      Date: any;
+      Contact: {
+        Name: any;
+        EmailAddress: any;
+        Phones: {
+          PhoneType: string;
+          PhoneNumber: any;
+        }[];
+        BankAccountDetails: any;
+      };
+      LineItems: {
+        Description: any;
+        Quantity: number;
+        UnitAmount: any;
+        AccountCode: string;
+      }[];
+      BankAccount: {
+
+      };
+    }
+
+    const listOfTransactions: Record<string, string>[] = await readCSV(tempFilePath);
+    const listOfFormattedTransactions: XeroTransactionObject[] = [];
+
+    listOfTransactions.forEach(function (transaction) {
+      console.log("Transaction name: " + transaction["Name"]);
+      const xeroTransactionObject: XeroTransactionObject = {
+        "Type": "RECEIVE",
+        "Reference": transaction["Remarks"],
+        "Date": transaction["Date"],
+        "Contact": {
+          "Name": transaction["Name"],
+          "EmailAddress": transaction["Email"],
+          "Phones": [
+            {
+              "PhoneType": "MOBILE",
+              "PhoneNumber": transaction["ContactNumber"],
+            },
+          ],
+          "BankAccountDetails": transaction["TransactionID"],
+        },
+        "LineItems": [
+          {
+            "Description": transaction["Remarks"],
+            "Quantity": 1.0,
+            "UnitAmount": transaction["Amount Paid"],
+            "AccountCode": "404",
+          },
+        ],
+        "BankAccount": {
+          "Code": "090",
+        },
+      };
+
+      listOfFormattedTransactions.push(xeroTransactionObject);
+    });
+
+    console.log("Length of list of Formatted Transactions: " + listOfFormattedTransactions.length);
+
+    // final JSON to parse to XeroApi
+    const compiledXeroJson = {
+      "bankTransactions": listOfFormattedTransactions,
     };
-    // callFunction
-    convertToJson();
+
+    const url = "http://localhost:5001/cbkaccounting/us-central1/xeroCreateBankTransaction";
+
+    const options = {
+      method: "POST",
+      path: url,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(compiledXeroJson),
+    };
+
+    nodeRequest.post(url, options, function (err, response, body) {
+      console.log("error:", err);
+      console.log("statusCode:", response && response.statusCode);
+      console.log("body:", body);
+    });
+
 
     for (const file in uploads) {
       fs.unlinkSync(uploads[file]);
     }
-    response.status(204).send();
+    response.status(200).send(JSON.stringify(compiledXeroJson));
   });
 
   busboy.end(request.rawBody);
