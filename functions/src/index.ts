@@ -18,10 +18,10 @@ const { client_id, client_secret } = config;
 console.log("Client ID is: " + client_id);
 console.log("Client Secret is: " + client_secret);
 
-const FUNCTION_AUTH_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroAuth";
-const FUNCTION_REDIRECT_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
-// const FUNCTION_AUTH_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroAuth";
-// const FUNCTION_REDIRECT_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
+// const FUNCTION_AUTH_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroAuth";
+// const FUNCTION_REDIRECT_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
+const FUNCTION_AUTH_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroAuth";
+const FUNCTION_REDIRECT_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
 
 // const global_xeroGetTenantConnections = "http://localhost:5001/cbkaccounting/us-central1/xeroGetTenantConnections";
 // const global_xeroRefresh = "http://localhost:5001/cbkaccounting/us-central1/xeroRefresh";
