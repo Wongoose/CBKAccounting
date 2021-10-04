@@ -1,0 +1,185 @@
+import * as Papa from "papaparse";
+import nodeRequest = require("request");
+import { promisify } from "util";
+import config from "./config/config";
+import base64 = require("base-64");
+import fs = require("fs");
+
+const { client_id, client_secret } = config;
+
+const XERO_BANK_TRANSACTIONS_URL = "https://api.xero.com/api.xro/2.0/BankTransactions";
+const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
+const XERO_TENANT_CONNECTIONS_URL = "https://api.xero.com/connections";
+
+export const post = promisify(nodeRequest.post);
+
+export type XeroTransactionObject = {
+  Type: string;
+  Reference: string;
+  Date: string;
+  CurrencyCode: string;
+  Contact: {
+    Name: string;
+    EmailAddress: string;
+    Phones: {
+      PhoneType: string;
+      PhoneNumber: string;
+    }[];
+    BankAccountDetails: string;
+  };
+  LineItems: Record<string, unknown>[];
+  BankAccount: Record<string, unknown>;
+}
+
+export type XeroParameters = {
+  client_id: string | undefined;
+  client_secret: string | undefined,
+  access_token?: string,
+  refresh_token?: string,
+  redirect_uri?: string;
+  response_type?: string;
+  scope?: string;
+  state?: string;
+}
+
+
+export const xeroCreateBankTransaction = async (
+  firestore: FirebaseFirestore.Firestore,
+  transactions: XeroTransactionObject[]
+) => {
+  try {
+    console.log("\nSTART OF xeroCreateBankTransaction:\n");
+
+    const doc = await firestore.collection("CBKAccounting").doc("tokens").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) throw Error("Access Token or Xero Tenant ID not found");
+
+    const accessToken = dataMap["access_token"];
+    const xeroTenantId = dataMap["xero-tenant-id"];
+
+    const requestBody = { bankTransactions: transactions };
+    const { statusCode, body } = await post({
+      url: XERO_BANK_TRANSACTIONS_URL,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + accessToken,
+        "Xero-Tenant-Id": xeroTenantId,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    console.log("xeroCreateBankTransaction | statusCode:", statusCode);
+    console.log("xeroCreateBankTransaction | body:", body);
+
+    return statusCode;
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+};
+
+export const xeroRefreshAccessToken = async (
+  firestore: FirebaseFirestore.Firestore,
+) => {
+  try {
+
+    console.log("\nSTART OF xeroRefresh:\n");
+
+    const cbkAccountingCollection = firestore.collection("CBKAccounting");
+    const doc = await cbkAccountingCollection.doc("tokens").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) throw Error("Access Token or Refresh Token not found");
+
+    const accessToken = dataMap["access_token"];
+    const refreshToken = dataMap["refresh_token"];
+
+    const params: XeroParameters = {
+      client_id: client_id,
+      client_secret: client_secret,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    };
+
+    const { statusCode, body } = await post({
+      method: "POST",
+      url: XERO_TOKEN_URL,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": "Basic " + base64.encode(`${params.client_id}:${params.client_secret}`),
+      },
+      body: `grant_type=refresh_token&refresh_token=${params.refresh_token}`,
+    });
+
+    console.log("xeroRefreshAPI | statusCode:", statusCode);
+    const { access_token, refresh_token } = JSON.parse(body);
+
+    await cbkAccountingCollection.doc("tokens").update({ access_token, refresh_token });
+    return true;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+};
+
+export const xeroGetTenantConnections = async (
+  firestore: FirebaseFirestore.Firestore,) => {
+  try {
+
+    console.log("\nSTART OF xeroGetTenantConnections:\n");
+
+    const cbkAccountingCollection = firestore.collection("CBKAccounting");
+    const doc = await cbkAccountingCollection.doc("tokens").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) throw Error("Access Token or Refresh Token not found");
+
+    const accessToken = dataMap["access_token"];
+
+    const { statusCode, body } = await post({
+      url: XERO_TENANT_CONNECTIONS_URL,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`,
+      },
+    });
+
+    console.log("xeroGetTenantConnections | statusCode:", statusCode);
+    console.log("xeroGetTenantConnections | body:", body);
+
+    if (statusCode === 200) {
+      const firstTenantJSON: Record<string, string> = (JSON.parse(body))[0];
+      const xeroTenantId = firstTenantJSON["tenantId"];
+      console.log("xeroGetTenantConnections | Tenant ID is: " + xeroTenantId);
+      cbkAccountingCollection.doc("tokens").update({
+        "xero-tenant-id": xeroTenantId,
+      });
+      return true;
+    } else {
+      return false;
+    }
+  } catch (error) {
+    return false;
+  }
+};
+
+export const readCSV = async (filePath: fs.PathOrFileDescriptor) => {
+  const csvFile = fs.readFileSync(filePath);
+  const csvData = csvFile.toString();
+  return new Promise<Record<string, string>[]>((resolve, reject) => {
+    try {
+      Papa.parse((csvData), {
+        header: true,
+        complete: (results: any) => {
+          console.log("Complete", results.data.length, "records.");
+          resolve(results.data);
+        },
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+};

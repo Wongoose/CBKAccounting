@@ -1,5 +1,4 @@
 import * as functions from "firebase-functions";
-import * as Papa from "papaparse";
 import nodeRequest = require("request");
 import base64 = require("base-64");
 import config from "./config/config";
@@ -7,23 +6,23 @@ import admin = require("firebase-admin");
 import Busboy = require("busboy");
 import os = require("os");
 import fs = require("fs");
-import path = require("path"); 
+import path = require("path");
+import { post, readCSV, xeroCreateBankTransaction, xeroGetTenantConnections, xeroRefreshAccessToken, XeroTransactionObject } from "./helper";
 
 admin.initializeApp();
 const db = admin.firestore();
 const cbkAccountingCollection = db.collection("CBKAccounting");
 
-const client_id = config.client_id;
-const client_secret = config.client_secret;
+const { client_id, client_secret } = config;
 
 console.log("Client ID is: " + client_id);
 console.log("Client Secret is: " + client_secret);
 
 const global_xeroAuth = "http://localhost:5001/cbkaccounting/us-central1/xeroAuth";
 const global_redirect_uri = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
-const global_xeroGetTenantConnections = "http://localhost:5001/cbkaccounting/us-central1/xeroGetTenantConnections";
-const global_xeroRefresh = "http://localhost:5001/cbkaccounting/us-central1/xeroRefresh";
-const global_xeroCreateBankTransaction = "http://localhost:5001/cbkaccounting/us-central1/xeroCreateBankTransaction";
+// const global_xeroGetTenantConnections = "http://localhost:5001/cbkaccounting/us-central1/xeroGetTenantConnections";
+// const global_xeroRefresh = "http://localhost:5001/cbkaccounting/us-central1/xeroRefresh";
+// const global_xeroCreateBankTransaction = "http://localhost:5001/cbkaccounting/us-central1/xeroCreateBankTransaction";
 // const global_xeroAuth = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroAuth";
 // const global_redirect_uri = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
 // const global_xeroGetTenantConnections = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroGetTenantConnections";
@@ -42,6 +41,9 @@ type Parameters = {
 }
 
 exports.xeroAuth = functions.https.onRequest((request, response) => {
+
+  console.log("\nSTART OF xeroAuth\n");
+
   const params: Parameters = {
     client_id: client_id,
     client_secret: client_secret,
@@ -56,18 +58,16 @@ exports.xeroAuth = functions.https.onRequest((request, response) => {
   response.redirect(301, url);
 });
 
-exports.xeroRedirectUrl = functions.https.onRequest((request, response) => {
+exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) => {
 
-  const exchangeCode = request.query.code;
-  const requestError = request.query.error;
-  response.status(200).send("Success! Updated access_token and tenant_id");
+  const { requestExchangeCode, requestError } = request.query;
+
 
   if (requestError) {
     // has error
     // response.status(404).send("An error has occured. Please try again.");
-  } else if (exchangeCode) {
-    console.log("Redirected with request code: " + exchangeCode);
-    functions.logger.info("Redirected with request code: " + exchangeCode);
+  } else if (requestExchangeCode) {
+    console.log("xeroRedirectURL | Redirected with request code: " + requestExchangeCode);
 
     const params: Parameters = {
       client_id: client_id,
@@ -75,153 +75,74 @@ exports.xeroRedirectUrl = functions.https.onRequest((request, response) => {
     };
 
     const url = "https://identity.xero.com/connect/token";
-    const options = {
-      path: url,
+    const { statusCode, body } = await post({
       method: "POST",
+      url: url,
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         "Authorization": "Basic " + base64.encode(`${params.client_id}:${params.client_secret}`),
       },
-      body: `grant_type=authorization_code&code=${exchangeCode}&redirect_uri=${global_redirect_uri}`,
-    };
-
-    nodeRequest.post(url, options, async function (err, res, body) {
-      console.log("error:", err);
-      console.log("statusCode:", res && res.statusCode);
-      console.log("body:", body);
-
-      if (res.statusCode == 200) {
-        // response.status(200).send("Done. Successful!");
-        console.log("xerRedirectUrl | Proceed with execution");
-        const resultBody: Record<string, string> = JSON.parse(body);
-        const newAccessToken: string = resultBody["access_token"];
-        const newRefreshToken: string = resultBody["refresh_token"];
-        console.log("New Access Token: " + newAccessToken);
-        console.log("New Refresh Token: " + newRefreshToken);
-
-        await cbkAccountingCollection.doc("tokens").update({
-          "access_token": newAccessToken,
-          "refresh_token": newRefreshToken,
-        });
-
-        // getTenantConnections
-        const tenantUrl = global_xeroGetTenantConnections;
-        const tenantOptions = {
-          path: tenantUrl,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        };
-
-        nodeRequest.post(tenantUrl, tenantOptions, function (err, response, body) {
-          console.log("POST xeroGetTenantConnections");
-        });
-      }
-
+      body: `grant_type=authorization_code&code=${requestExchangeCode}&redirect_uri=${global_redirect_uri}`,
     });
-  } else {
-    // response.send("Unkown Error!");
-  }
 
-});
+    console.log("xeroRedirectUrl | statusCode:", statusCode);
+    console.log("xeroRedirectUrl | body:", body);
 
-exports.xeroGetTenantConnections = functions.https.onRequest(async (request, response) => {
-  let _access_token = "";
-
-  await cbkAccountingCollection.doc("tokens").get().then((doc) => {
-    const dataMap: any = doc.data();
-    _access_token = dataMap["access_token"];
-  });
-
-  const path2 = "https://api.xero.com/connections";
-  const options = {
-    path: path2,
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${_access_token}`,
-    },
-  };
-
-  nodeRequest.get(path2, options, function (err, response, body) {
-    console.log("error:", err);
-    console.log("statusCode:", response && response.statusCode);
-    console.log("body:", body);
-
-    if (response.statusCode == 200) {
-      const jsonResponse: Record<string, string> = (JSON.parse(body))[0];
-      console.log("jsonResponse index 0 | is: " + jsonResponse);
-      const xeroTenantId = jsonResponse["tenantId"];
-      console.log("xeroTenantId | is: " + xeroTenantId);
-      cbkAccountingCollection.doc("tokens").update({
-        "xero-tenant-id": xeroTenantId,
-      });
-    }
-  });
-
-  response.status(200).send("Success");
-});
-
-exports.xeroRefresh = functions.https.onRequest(async (request, response) => {
-
-  let _access_token = "";
-  let _refresh_token = "";
-
-  // retrieve from firestore
-  await cbkAccountingCollection.doc("tokens").get().then((doc) => {
-    const dataMap: any = doc.data();
-
-    if (dataMap != null || dataMap != undefined) {
-      // there is data
-      _access_token = dataMap["access_token"];
-      _refresh_token = dataMap["refresh_token"];
-      // console.log("Firestore | Access Token: " + _access_token);
-      // console.log("Firestore | Refresh Token: " + _refresh_token);
-
-    }
-  });
-
-  const params: Parameters = {
-    client_id: client_id,
-    client_secret: client_secret,
-    access_token: _access_token,
-    refresh_token: _refresh_token,
-  };
-
-  const url = "https://identity.xero.com/connect/token";
-
-  const options = {
-    method: "POST",
-    path: url,
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Authorization": "Basic " + base64.encode(`${params.client_id}:${params.client_secret}`),
-    },
-    body: `grant_type=refresh_token&refresh_token=${params.refresh_token}`,
-  };
-
-  nodeRequest.post(url, options, async function (err, response, body) {
-    console.log("error:", err);
-    console.log("statusCode:", response && response.statusCode);
-    // console.log("body:", body);
-
-    if (response.statusCode == 200) {
-      console.log("Proceed with execution");
+    if (statusCode === 200) {
+      console.log("xeroRedirectUrl | Proceed with execution");
       const resultBody: Record<string, string> = JSON.parse(body);
       const newAccessToken: string = resultBody["access_token"];
       const newRefreshToken: string = resultBody["refresh_token"];
-      console.log("New Access Token: " + newAccessToken);
       console.log("New Refresh Token: " + newRefreshToken);
 
       await cbkAccountingCollection.doc("tokens").update({
         "access_token": newAccessToken,
         "refresh_token": newRefreshToken,
       });
-    }
 
-  });
-  response.status(200).send("Success");
+      const result = await xeroGetTenantConnections(db);
+
+      if (result) {
+        console.log("xeroRedirectUrl | after getTenantConnections SUCCESS");
+        response.status(200).send("Authorization flow successful. You may now call your first request with CBKAccounting");
+      } else {
+        console.log("xeroRedirectUrl | after getTenantConnections FAILED");
+        response.status(500).send("Failed to update Xero Tenant ID, please try again here: \n" + global_xeroAuth);
+      }
+    } else {
+      console.log("xeroRedirectUrl | FAILED");
+      response.status(500).send("Failed to proceed with authorization, please try again here: \n" + global_xeroAuth);
+    }
+  }
+});
+
+
+exports.xeroGetTenantConnections = functions.https.onRequest(async (request, response) => {
+  const getTenantConnectionsSuccess = await xeroGetTenantConnections(db);
+
+  if (getTenantConnectionsSuccess) {
+    console.log("Cloud Function xeroGetTenantConnections | Success");
+    response.status(200).send("Xero Tenant ID updated successful.");
+  } else {
+    console.log("Cloud Function xeroGetTenantConnections | Failed");
+    response.status(500).send("Failed to update Xero Tenant ID, please try again.");
+
+  }
+});
+
+exports.xeroRefreshToken = functions.https.onRequest(async (request, response) => {
+  console.log("\n CLOUD FUNCTION START OF xeroRefreshToken:\n");
+  const refreshSuccess = await xeroRefreshAccessToken(db);
+
+  if (refreshSuccess) {
+    console.log("Cloud Function xeroRefreshToken | Success");
+    response.status(200).send("Access Token and Refresh Token updated successful.");
+  } else {
+    console.log("Cloud Function xeroRefreshToken | Failed");
+    response.status(500).send("Failed to update Access Token and Refresh Token, please try again.");
+
+  }
+
 });
 
 // XERO API FUNCTIONS
@@ -229,71 +150,27 @@ exports.createBankAccount = functions.https.onRequest(async (request, response) 
   let _access_token = "";
   let _xeroTenantId = "";
 
+  let dataMap: any | undefined;
+
   await cbkAccountingCollection.doc("tokens").get().then((doc) => {
-    const dataMap: any = doc.data();
+    dataMap = doc.data();
 
     if (dataMap != null || dataMap != undefined) {
       // there is data
       _access_token = dataMap["access_token"];
       _xeroTenantId = dataMap["xero-tenant-id"];
-      // console.log("Firestore | Access Token: " + _access_token);
-      // console.log("Firestore | Refresh Token: " + _refresh_token);
-      const url = "https://api.xero.com/api.xro/2.0/Accounts";
-      const bodyData = {
-        "Code": "200",
-        "Name": "Zheng Xiang Wong",
-        "Type": "BANK",
-        "BankAccountNumber": "101012041962",
-      };
-      const options = {
-        method: "PUT",
-        path: url,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + _access_token,
-          "Xero-Tenant-Id": _xeroTenantId,
-        },
-        body: JSON.stringify(bodyData),
-      };
-
-      nodeRequest.put(url, options, function (err, response, body) {
-        console.log("error:", err);
-        console.log("statusCode:", response && response.statusCode);
-        console.log("body:", body);
-        console.log("createBankAccount END");
-      });
-
-    }
-  });
-  response.status(200).send("Success");
-
-});
-exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, response) => {
-
-  let _access_token = "";
-  let _xeroTenantId = "";
-
-  await cbkAccountingCollection.doc("tokens").get().then((doc) => {
-    const dataMap: any = doc.data();
-
-    if (dataMap != null || dataMap != undefined) {
-      // there is data
-      _access_token = dataMap["access_token"];
-      _xeroTenantId = dataMap["xero-tenant-id"];
-      // console.log("Firestore | Access Token: " + _access_token);
-      // console.log("Firestore | Refresh Token: " + _refresh_token);
-
     }
   });
 
-  let bodyData = request.rawBody.toString();
-  console.log("Request Raw Body is: " + JSON.parse(bodyData));
-  bodyData = JSON.parse(bodyData);
-
-  const url = "https://api.xero.com/api.xro/2.0/BankTransactions";
-
+  const url = "https://api.xero.com/api.xro/2.0/Accounts";
+  const bodyData = {
+    "Code": "200",
+    "Name": "Zheng Xiang Wong",
+    "Type": "BANK",
+    "BankAccountNumber": "101012041962",
+  };
   const options = {
-    method: "POST",
+    method: "PUT",
     path: url,
     headers: {
       "Content-Type": "application/json",
@@ -303,16 +180,28 @@ exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, re
     body: JSON.stringify(bodyData),
   };
 
-  nodeRequest.post(url, options, function (err, reponse, body) {
+  nodeRequest.put(url, options, function (err, response, body) {
     console.log("error:", err);
     console.log("statusCode:", response && response.statusCode);
     console.log("body:", body);
+    console.log("createBankAccount END");
   });
 
-  response.status(200).send("success");
+  response.status(200).send("Success");
 });
 
-exports.inputXeroApi = functions.https.onRequest((request, response) => {
+exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, response) => {
+  const statusCode = await xeroCreateBankTransaction(db, JSON.parse(request.body));
+
+  if (statusCode !== 200) {
+    console.log("Cloud Function xeroCreateBankTransaction | Failed");
+    response.status(500).send("Failed to create Bank Transaction in Xero");
+  } else {
+    response.status(200).send("SUCCESS! \n" + request.body);
+  }
+});
+
+exports.inputXeroMain = functions.https.onRequest((request, response) => {
   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
   if (request.method !== "POST") {
     return response.status(405).end();
@@ -349,7 +238,6 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
         console.log("writeStream end fileName: " + filename);
         console.log("writeStream end file: " + file);
         writeStream.end();
-
       });
       console.log("writeStream finish");
       writeStream.on("finish", resolve);
@@ -367,53 +255,15 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
     console.log(uploads["testData.csv"]);
 
     const tempFilePath = uploads["testData"];
-    // Function to read csv which returns a promise so you can do async / await.
-    const readCSV = async (filePath: fs.PathOrFileDescriptor) => {
-      const csvFile = fs.readFileSync(filePath);
-      const csvData = csvFile.toString();
-      return new Promise<Record<string, string>[]>((resolve, reject) => {
-        try {
-          Papa.parse((csvData), {
-            header: true,
-            complete: (results: any) => {
-              console.log("Complete", results.data.length, "records.");
-              resolve(results.data);
-            },
-          });
-        } catch (err) {
-          reject(err);
-        }
-      });
-    };
+
 
     // convert to JSON
-    type XeroTransactionObject = {
-      Type: string;
-      Reference: string;
-      Date: string;
-      CurrencyCode: string;
-      Contact: {
-        Name: string;
-        EmailAddress: string;
-        Phones: {
-          PhoneType: string;
-          PhoneNumber: string;
-        }[];
-        BankAccountDetails: string;
-      };
-      LineItems: {
-
-      }[];
-      BankAccount: {
-
-      };
-    }
-
     const listOfTransactions: Record<string, string>[] = await readCSV(tempFilePath);
     const listOfFormattedTransactions: XeroTransactionObject[] = [];
 
-    listOfTransactions.forEach(function (transaction) {
+    for (const transaction of listOfTransactions) {
       console.log("Transaction name: " + transaction["Name"]);
+
       const xeroTransactionObject: XeroTransactionObject = {
         "Type": transaction["Type"],
         "Reference": transaction["Remarks"],
@@ -435,7 +285,7 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
             "Description": transaction["Remarks"],
             "Quantity": 1.0,
             "UnitAmount": transaction["Amount"],
-            "AccountCode": "404",
+            "AccountCode": "7319",
           },
         ],
         "BankAccount": {
@@ -444,7 +294,7 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
       };
 
       listOfFormattedTransactions.push(xeroTransactionObject);
-    });
+    }
 
     console.log("Length of list of Formatted Transactions: " + listOfFormattedTransactions.length);
 
@@ -453,28 +303,68 @@ exports.inputXeroApi = functions.https.onRequest((request, response) => {
       "bankTransactions": listOfFormattedTransactions,
     };
 
-    const url = global_xeroCreateBankTransaction;
+    const statusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
 
-    const options = {
-      method: "POST",
-      path: url,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(compiledXeroJson),
-    };
+    switch (statusCode) {
+      case 200:
+        console.log("Update transactions successful");
+        response.status(200).send(JSON.stringify(compiledXeroJson));
+        break;
 
-    nodeRequest.post(url, options, function (err, response, body) {
-      console.log("error:", err);
-      console.log("statusCode:", response && response.statusCode);
-      console.log("body:", body);
-    });
+      case 401: {
+        const refreshSuccess = await xeroRefreshAccessToken(db);
+        if (!refreshSuccess) {
+          console.log("xeroRefreshAccessToken | Failed");
+          response.status(401).send("You are not authorized.");
+        } else {
+          const retryStatusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+          if (retryStatusCode !== 200) {
+            console.log("Retry xeroCreateBankTransactions | Failed with statusCode " + retryStatusCode);
+            if (retryStatusCode === 403) {
+              response.status(403).send("This app is unauthorized or the auth has been resetted. Please authorize this app manually by following this link: \n" + global_xeroAuth);
+            } else {
+              response.status(500).send("Your function call has been terminated, please try again.");
+            }
+          } else {
+            console.log("Update transactions successful");
+            response.status(200).send(JSON.stringify(compiledXeroJson));
+          }
+        }
+        break;
+      }
+
+      case 403:
+        console.log("xeroCreateBankTransactions | Unauthorized with organization. Need manual Authentication.");
+        response.status(403).send("This app is unauthorized or the auth has been resetted. Please authorize this app manually by following this link: \n" + global_xeroAuth);
+        break;
+
+      default:
+        console.log("xeroCreateBankTransactions | Failed functions called.");
+        response.status(500).send("No data has been processed for this endpoint. This endpoint is expecting BankTransaction data to be specifed in the request body.");
+    }
+
+    // const url = global_xeroCreateBankTransaction;
+
+    // const options = {
+    //   method: "POST",
+    //   path: url,
+    //   headers: {
+    //     "Content-Type": "application/json",
+    //   },
+    //   body: JSON.stringify(compiledXeroJson),
+    // };
+
+    // nodeRequest.post(url, options, function (err, response, body) {
+    //   console.log("error:", err);
+    //   console.log("statusCode:", response && response.statusCode);
+    //   console.log("body:", body);
+    // });
 
 
     for (const file in uploads) {
       fs.unlinkSync(uploads[file]);
     }
-    response.status(200).send(JSON.stringify(compiledXeroJson));
+    console.log("END");
   });
 
   busboy.end(request.rawBody);
