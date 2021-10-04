@@ -12,6 +12,7 @@ const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_TENANT_CONNECTIONS_URL = "https://api.xero.com/connections";
 
 export const post = promisify(nodeRequest.post);
+export const get = promisify(nodeRequest.get);
 
 export type XeroTransactionObject = {
   Type: string;
@@ -125,22 +126,17 @@ export const xeroRefreshAccessToken = async (
 };
 
 export const xeroGetTenantConnections = async (
-  firestore: FirebaseFirestore.Firestore,) => {
+  firestore: FirebaseFirestore.Firestore,
+  accessToken: string,) => {
   try {
 
     console.log("\nSTART OF xeroGetTenantConnections:\n");
 
     const cbkAccountingCollection = firestore.collection("CBKAccounting");
-    const doc = await cbkAccountingCollection.doc("tokens").get();
-    const dataMap = doc.data();
 
-    if (dataMap === undefined) throw Error("Access Token or Refresh Token not found");
-
-    const accessToken = dataMap["access_token"];
-
-    const { statusCode, body } = await post({
+    const { statusCode, body } = await get({
       url: XERO_TENANT_CONNECTIONS_URL,
-      method: "POST",
+      method: "GET",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${accessToken}`,
