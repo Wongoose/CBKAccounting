@@ -154,7 +154,6 @@ exports.xeroRefreshToken = functions.https.onRequest(async (request, response) =
 
 });
 
-// XERO API FUNCTIONS
 exports.createBankAccount = functions.https.onRequest(async (request, response) => {
   let _access_token = "";
   let _xeroTenantId = "";
