@@ -208,7 +208,7 @@ exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, re
   }
 });
 
-exports.inputXeroMain = functions.https.onRequest((request, response) => {
+exports.xeroInputMain = functions.https.onRequest((request, response) => {
   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
   if (request.method !== "POST") {
     return response.status(405).end();
