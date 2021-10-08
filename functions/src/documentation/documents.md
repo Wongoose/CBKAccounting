@@ -5,6 +5,8 @@
 
 - To reformat the data received from webhooks, then creating bank transactions in the Xero Accounting Software
 
+-----
+
 ## **THREE MAIN FUNCTIONS**
 
 ### 1) XERO INPUT MAIN Function
@@ -22,7 +24,6 @@
 - This function is only needed for start-up deployment, and future redeployment if needed (called manually)
 - URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroManualAuth
 
-
 -----
 
 ## **HOW TO CREATE BANK TRANSACTIONS**
@@ -36,12 +37,7 @@
 - **Key** - FIELD_NAME
 - **Value** - Must be a file of .CSV format
 
-Must be .CSV file
-Only parse in one CSV file per request
-CSV file can have multiple lines of transactions
+#### 4. Additional notes:
+- You must only parse in 1 CSV file per request
+- Your one CSV file can have multiple lines of transactions, each of them will be processed
 
-No requirements for Request Headers
-
-Request requirements:
-"Content-Type": "multipart/form-data"
-Key: inputData, Value: inputData.csv
