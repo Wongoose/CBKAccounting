@@ -1,9 +1,9 @@
-CBKACCOUNTING CLOUD FUNCTIONS DOCUMENTATION
+**CBKACCOUNTING CLOUD FUNCTIONS DOCUMENTATION**
 
-Objective:
+**Objective:**
 - To reformat the data received from webhooks, then creating bank transactions in the Xero Accounting Software
 
-Three Main Functions:
+**Three Main Functions:**
 - XERO INPUT MAIN Function
 1) This is the main body function that processes inbound data, then attempting to create bank transactions in Xero 
 2) This should be the only function requested by WEBHOOKS while parsing in data
