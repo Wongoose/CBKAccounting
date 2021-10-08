@@ -5,8 +5,6 @@
 
 - To reformat the data received from webhooks, then creating bank transactions in the Xero Accounting Software
 
------
-
 ## **THREE MAIN FUNCTIONS**
 
 ### 1) XERO INPUT MAIN Function
