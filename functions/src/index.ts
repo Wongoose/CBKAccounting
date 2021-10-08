@@ -18,10 +18,10 @@ const { client_id, client_secret } = config;
 console.log("Client ID is: " + client_id);
 console.log("Client Secret is: " + client_secret);
 
-// const FUNCTION_AUTH_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroAuth";
-// const FUNCTION_REDIRECT_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
-const FUNCTION_AUTH_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroAuth";
-const FUNCTION_REDIRECT_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
+const FUNCTION_AUTH_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroManualAuth";
+const FUNCTION_REDIRECT_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
+// const FUNCTION_AUTH_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroManualAuth";
+// const FUNCTION_REDIRECT_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
 
 // const global_xeroGetTenantConnections = "http://localhost:5001/cbkaccounting/us-central1/xeroGetTenantConnections";
 // const global_xeroRefresh = "http://localhost:5001/cbkaccounting/us-central1/xeroRefresh";
@@ -41,7 +41,7 @@ type Parameters = {
   state?: string;
 }
 
-exports.xeroAuth = functions.https.onRequest((request, response) => {
+exports.xeroManualAuth = functions.https.onRequest((request, response) => {
 
   console.log("\nSTART OF xeroAuth\n");
 
@@ -116,7 +116,6 @@ exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) =>
     }
   }
 });
-
 
 exports.xeroGetTenantConnections = functions.https.onRequest(async (request, response) => {
   const cbkAccountingCollection = db.collection("CBKAccounting");
@@ -216,6 +215,7 @@ exports.inputXeroMain = functions.https.onRequest((request, response) => {
   }
   const busboy = new Busboy({ headers: request.headers });
   const tmpdir = os.tmpdir();
+  let global_field_name: string;
 
   console.log("Busboy init in functions!");
   functions.logger.info("Busboy init functions with tempDIR: " + tmpdir);
@@ -228,6 +228,8 @@ exports.inputXeroMain = functions.https.onRequest((request, response) => {
     // Thus, any files in it must fit in the instance"s memory.
     console.log(`Processed file ${filename}`);
     console.log(`Processed fieldName ${fieldname}`);
+    global_field_name = fieldname;
+
     const filepath = path.join(tmpdir, filename);
     console.log("File path is: " + filepath);
     functions.logger.info("Filepath is: " + filepath);
@@ -259,9 +261,9 @@ exports.inputXeroMain = functions.https.onRequest((request, response) => {
     await Promise.all(fileWrites);
     console.log("Busboy FINISH! Process saved files here");
     console.log("Uploads is: " + uploads);
-    console.log(uploads["testData.csv"]);
+    console.log(uploads[global_field_name]);
 
-    const tempFilePath = uploads["testData"];
+    const tempFilePath = uploads[global_field_name];
 
 
     // convert to JSON
@@ -270,37 +272,41 @@ exports.inputXeroMain = functions.https.onRequest((request, response) => {
 
     for (const transaction of listOfTransactions) {
       console.log("Transaction name: " + transaction["Name"]);
-
-      const xeroTransactionObject: XeroTransactionObject = {
-        "Type": transaction["Type"],
-        "Reference": transaction["Remarks"],
-        "Date": transaction["Date"],
-        "CurrencyCode": transaction["Currency"],
-        "Contact": {
-          "Name": transaction["Name"],
-          "EmailAddress": transaction["Email"],
-          "Phones": [
+      if (transaction["Name"] == undefined) {
+        // empty transaction line - IGNORE
+      } else {
+        const xeroTransactionObject: XeroTransactionObject = {
+          "Type": transaction["Type"],
+          "Reference": transaction["Reference"],
+          "Date": transaction["Date"],
+          "CurrencyCode": transaction["CurrencyCode"],
+          "Contact": {
+            "Name": transaction["Description"],
+            "EmailAddress": transaction["Email"],
+            "Phones": [
+              {
+                "PhoneType": "MOBILE",
+                "PhoneNumber": transaction["ContactNumber"],
+              },
+            ],
+            "BankAccountDetails": transaction["TransactionId"],
+          },
+          "LineItems": [
             {
-              "PhoneType": "MOBILE",
-              "PhoneNumber": transaction["ContactNumber"],
+              "Description": transaction["Reference"],
+              "Quantity": 1.0,
+              "UnitAmount": transaction["Amount"],
+              "AccountCode": transaction["AccountCode"],
+
             },
           ],
-          "BankAccountDetails": transaction["TransactionID"],
-        },
-        "LineItems": [
-          {
-            "Description": transaction["Remarks"],
-            "Quantity": 1.0,
-            "UnitAmount": transaction["Amount"],
-            "AccountCode": "7319",
+          "BankAccount": {
+            "Code": transaction["BankCode"],
           },
-        ],
-        "BankAccount": {
-          "Code": "090",
-        },
-      };
+        };
 
-      listOfFormattedTransactions.push(xeroTransactionObject);
+        listOfFormattedTransactions.push(xeroTransactionObject);
+      }
     }
 
     console.log("Length of list of Formatted Transactions: " + listOfFormattedTransactions.length);
@@ -328,7 +334,7 @@ exports.inputXeroMain = functions.https.onRequest((request, response) => {
           if (retryStatusCode !== 200) {
             console.log("Retry xeroCreateBankTransactions | Failed with statusCode " + retryStatusCode);
             if (retryStatusCode === 403) {
-              response.status(403).send("This app is unauthorized or the auth has been resetted. Please authorize this app manually by following this link: \n" + FUNCTION_AUTH_URL);
+              response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your organizatoin here: \n" + FUNCTION_AUTH_URL);
             } else {
               response.status(500).send("Your function call has been terminated, please try again.");
             }
@@ -342,7 +348,7 @@ exports.inputXeroMain = functions.https.onRequest((request, response) => {
 
       case 403:
         console.log("xeroCreateBankTransactions | Unauthorized with organization. Need manual Authentication.");
-        response.status(403).send("This app is unauthorized or the auth has been resetted. Please authorize this app manually by following this link: \n" + FUNCTION_AUTH_URL);
+        response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your organizatoin here: \n" + FUNCTION_AUTH_URL);
         break;
 
       default:

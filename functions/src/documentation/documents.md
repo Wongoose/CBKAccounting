@@ -1,0 +1,32 @@
+CBKACCOUNTING CLOUD FUNCTIONS DOCUMENTATION
+
+Objective:
+- To reformat the data received from webhooks, then creating a bank transaction in Xero Accounting Software
+
+Three Main Functions:
+1) inputXeroMain Function
+- This is the main body function that processes inbound data, then attempting to create bank transactions in Xero 
+- This should be the only function requested by WEBHOOKS while parsing in data
+- URL: https://us-central1-cbkaccounting.cloudfunctions.net/inputXeroMain
+
+2) xeroRefreshToken Function
+- This function is called to refresh the authorization for CBKAccounting by getting a new Access Token and Refresh Token from Xero API.
+- This functions will be called automatically in the cloud functions when "inputXeroMain Function" failed with status "401: unauthorized client".
+- URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroRefreshToken
+
+3) xeroManualAuth Function
+- This function must be called by the Xero Admininstrator user to manually authorize CBKAccounting's connection to their Xero organization
+- This function is only needed for start-up deployment, and future redeployment if needed (called manually)
+URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroManualAuth
+
+
+
+Must be .CSV file
+Only parse in one CSV file per request
+CSV file can have multiple lines of transactions
+
+No requirements for Request Headers
+
+Request requirements:
+"Content-Type": "multipart/form-data"
+Key: inputData, Value: inputData.csv
