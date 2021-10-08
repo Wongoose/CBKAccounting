@@ -22,16 +22,19 @@
 - This function is only needed for start-up deployment, and future redeployment if needed (called manually)
 - URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroManualAuth
 
+
+-----
+
 ## **HOW TO CREATE BANK TRANSACTIONS**
 
-1. Call a POST request to "XERO INPUT MAIN" Function (URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroInputMain)
-2. Requirements for your request header:
-- authorization - parse in the CHUMBAKA_SECRET_KEY
-- Content-Type - should be set to "multipart/form-data"
+### 1. Call a POST request to "XERO INPUT MAIN" Function (URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroInputMain)
+### 2. Requirements for your request header:
+- **Authorization** - parse in the CHUMBAKA_SECRET_KEY
+- **Content-Type** - should be set to "multipart/form-data"
 
-3. Requirements for body:
-- Key - FIELD_NAME
-- Value - Must be a file of .CSV format
+### 3. Requirements for body:
+- **Key** - FIELD_NAME
+- **Value** - Must be a file of .CSV format
 
 Must be .CSV file
 Only parse in one CSV file per request
