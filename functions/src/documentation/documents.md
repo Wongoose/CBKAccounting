@@ -41,3 +41,11 @@
 - You must only parse in 1 CSV file per request
 - Your one CSV file can have multiple lines of transactions, each of them will be processed
 
+#### 5. Example request object:
+`{
+    headers: {
+    "Authorization": "290s3m18283m237hss13",
+    "Content-Type": "mulipart/form-data
+},
+form-data: assets/inputData.csv
+}`
