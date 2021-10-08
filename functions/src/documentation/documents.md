@@ -27,12 +27,12 @@
 
 ## **HOW TO CREATE BANK TRANSACTIONS**
 
-### 1. Call a POST request to "XERO INPUT MAIN" Function (URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroInputMain)
-### 2. Requirements for your request header:
+#### 1. Call a POST request to "XERO INPUT MAIN" Function (URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroInputMain)
+#### 2. Requirements for your request header:
 - **Authorization** - parse in the CHUMBAKA_SECRET_KEY
 - **Content-Type** - should be set to "multipart/form-data"
 
-### 3. Requirements for body:
+#### 3. Requirements for body:
 - **Key** - FIELD_NAME
 - **Value** - Must be a file of .CSV format
 
