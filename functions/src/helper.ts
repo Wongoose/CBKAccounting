@@ -4,6 +4,7 @@ import { promisify } from "util";
 import config from "./config/config";
 import base64 = require("base-64");
 import fs = require("fs");
+import * as functions from "firebase-functions";
 
 const { client_id, client_secret } = config;
 
@@ -43,6 +44,9 @@ export type XeroParameters = {
   state?: string;
 }
 
+export type ReturnValue = {
+  success: boolean, value: string | undefined, statusCode?: number,
+}
 
 export const xeroCreateBankTransaction = async (
   firestore: FirebaseFirestore.Firestore,
@@ -178,4 +182,54 @@ export const readCSV = async (filePath: fs.PathOrFileDescriptor) => {
       reject(err);
     }
   });
+};
+
+export const validateBearerAuthToken = async (request: functions.https.Request, firestore: FirebaseFirestore.Firestore): Promise<ReturnValue> => {
+
+  try {
+    const doc = await firestore.collection("CBKAccounting").doc("tokens").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) {
+      const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: Cannot read database.", statusCode: 500 };
+      return result;
+    }
+
+    const bearerToken = dataMap["bearer_token"];
+
+    let authorizationToken: string | undefined;
+    if (!request.headers.authorization || !request.headers.authorization.startsWith("Bearer ")) {
+      const result: ReturnValue = { success: false, value: "UNAUTHORIZED: You are not authorized to trigger this function. Please parse in your authorization token in your request header." };
+      return result;
+    }
+
+    if (request.headers.authorization && request.headers.authorization.startsWith("Bearer ")) {
+      console.log("Found 'Authorization' header");
+      authorizationToken = request.headers.authorization.split("Bearer ")[1];
+
+      // validate token from firebase
+      if (authorizationToken == bearerToken) {
+        console.log("VALID AUTHORIZATION TOKEN IN HEADER");
+        const result: ReturnValue = { success: true, value: authorizationToken };
+        return result;
+
+      } else {
+        console.log("INVALID AUTHORIZATION TOKEN IN HEADER");
+        const result: ReturnValue = { success: false, value: "UNAUTHORIZED: You are not authorized to trigger this function. Your authorization token is invalid." };
+        return result;
+      }
+    } else if (request.cookies) {
+      console.log("Found '__session' cookie");
+      authorizationToken = request.cookies.__session;
+      const result: ReturnValue = { success: true, value: authorizationToken };
+      return result;
+    } else {
+      const result: ReturnValue = { success: false, value: "UNAUTHORIZED: You are not authorized to trigger this function. Please parse in your authorization token in your request header." };
+      return result;
+    }
+  } catch (error) {
+    const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: An error has occured on our end. No action was perfomed." };
+    return result;
+  }
+
 };

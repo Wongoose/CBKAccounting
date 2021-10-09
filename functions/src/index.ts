@@ -7,7 +7,7 @@ import Busboy = require("busboy");
 import os = require("os");
 import fs = require("fs");
 import path = require("path");
-import { post, readCSV, xeroCreateBankTransaction, xeroGetTenantConnections, xeroRefreshAccessToken, XeroTransactionObject } from "./helper";
+import { post, readCSV, validateBearerAuthToken, xeroCreateBankTransaction, xeroGetTenantConnections, xeroRefreshAccessToken, XeroTransactionObject } from "./helper";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -63,7 +63,6 @@ exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) =>
 
   const { code, error } = request.query;
 
-
   if (error) {
     // has error
     // response.status(404).send("An error has occured. Please try again.");
@@ -118,6 +117,15 @@ exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) =>
 });
 
 exports.xeroGetTenantConnections = functions.https.onRequest(async (request, response) => {
+
+  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+  if (!success) {
+    console.log(value);
+    response.status(statusCode ?? 403).send(value?.toString());
+    return;
+  }
+
   const cbkAccountingCollection = db.collection("CBKAccounting");
   const doc = await cbkAccountingCollection.doc("tokens").get();
   const dataMap = doc.data();
@@ -139,7 +147,23 @@ exports.xeroGetTenantConnections = functions.https.onRequest(async (request, res
 });
 
 exports.xeroRefreshToken = functions.https.onRequest(async (request, response) => {
-  console.log("\n CLOUD FUNCTION START OF xeroRefreshToken:\n");
+  console.log("\nCLOUD FUNCTION START OF xeroRefreshToken:\n");
+
+  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+  if (!success) {
+    console.log(value);
+    response.status(statusCode ?? 403).send(value?.toString());
+    return;
+  }
+
+  console.log("xeroinputMain | RAN from request host: " + request.headers.host);
+  // console.log("xeroinputMain | RAN from request X-Forwarded-For: " + request.headers["X-Forwared-For"]);
+  // console.log("xeroinputMain | RAN from request connection: " + request.headers.connection);
+  // console.log("xeroinputMain | RAN from request IP: " + request.ip);
+  // console.log("xeroinputMain | RAN from request Origin: " + request.headers.origin);
+  // console.log("xeroinputMain | RAN from request IPs: " + request.ips);
+
   const refreshSuccess = await xeroRefreshAccessToken(db);
 
   if (refreshSuccess) {
@@ -148,53 +172,8 @@ exports.xeroRefreshToken = functions.https.onRequest(async (request, response) =
   } else {
     console.log("Cloud Function xeroRefreshToken | Failed");
     response.status(500).send("Failed to update Access Token and Refresh Token, please try again.");
-
   }
 
-});
-
-exports.createBankAccount = functions.https.onRequest(async (request, response) => {
-  let _access_token = "";
-  let _xeroTenantId = "";
-
-  let dataMap: any | undefined;
-
-  await cbkAccountingCollection.doc("tokens").get().then((doc) => {
-    dataMap = doc.data();
-
-    if (dataMap != null || dataMap != undefined) {
-      // there is data
-      _access_token = dataMap["access_token"];
-      _xeroTenantId = dataMap["xero-tenant-id"];
-    }
-  });
-
-  const url = "https://api.xero.com/api.xro/2.0/Accounts";
-  const bodyData = {
-    "Code": "200",
-    "Name": "Zheng Xiang Wong",
-    "Type": "BANK",
-    "BankAccountNumber": "101012041962",
-  };
-  const options = {
-    method: "PUT",
-    path: url,
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + _access_token,
-      "Xero-Tenant-Id": _xeroTenantId,
-    },
-    body: JSON.stringify(bodyData),
-  };
-
-  nodeRequest.put(url, options, function (err, response, body) {
-    console.log("error:", err);
-    console.log("statusCode:", response && response.statusCode);
-    console.log("body:", body);
-    console.log("createBankAccount END");
-  });
-
-  response.status(200).send("Success");
 });
 
 exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, response) => {
@@ -209,11 +188,22 @@ exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, re
 });
 
 // this is the main body function (called by webhooks)
-exports.xeroInputMain = functions.https.onRequest((request, response) => {
+exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
+
   if (request.method !== "POST") {
-    return response.status(405).end();
+    response.status(405).send("You have sent an invalid response to this url. No action performed.");
+    return;
   }
+
+  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+  if (!success) {
+    console.log(value);
+    response.status(statusCode ?? 403).send(value?.toString());
+    return;
+  }
+
   const busboy = new Busboy({ headers: request.headers });
   const tmpdir = os.tmpdir();
   let global_field_name: string;
@@ -272,8 +262,8 @@ exports.xeroInputMain = functions.https.onRequest((request, response) => {
     const listOfFormattedTransactions: XeroTransactionObject[] = [];
 
     for (const transaction of listOfTransactions) {
-      console.log("Transaction name: " + transaction["Name"]);
-      if (transaction["Name"] == undefined) {
+      console.log("Transaction name: " + transaction["Description"]);
+      if (transaction["Description"] == undefined) {
         // empty transaction line - IGNORE
       } else {
         const xeroTransactionObject: XeroTransactionObject = {
@@ -312,6 +302,10 @@ exports.xeroInputMain = functions.https.onRequest((request, response) => {
 
     console.log("Length of list of Formatted Transactions: " + listOfFormattedTransactions.length);
 
+    if (listOfFormattedTransactions.length == 0) {
+      response.status(400).send("INVALID INPUT DATA: Your CSV File does not have any valid transactions. No action was performed.");
+      return;
+    }
     // final JSON to parse to XeroApi
     const compiledXeroJson = {
       "bankTransactions": listOfFormattedTransactions,
@@ -335,7 +329,7 @@ exports.xeroInputMain = functions.https.onRequest((request, response) => {
           if (retryStatusCode !== 200) {
             console.log("Retry xeroCreateBankTransactions | Failed with statusCode " + retryStatusCode);
             if (retryStatusCode === 403) {
-              response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your organizatoin here: \n" + FUNCTION_AUTH_URL);
+              response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + FUNCTION_AUTH_URL);
             } else {
               response.status(500).send("Your function call has been terminated, please try again.");
             }
@@ -349,7 +343,7 @@ exports.xeroInputMain = functions.https.onRequest((request, response) => {
 
       case 403:
         console.log("xeroCreateBankTransactions | Unauthorized with organization. Need manual Authentication.");
-        response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your organizatoin here: \n" + FUNCTION_AUTH_URL);
+        response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + FUNCTION_AUTH_URL);
         break;
 
       default:
