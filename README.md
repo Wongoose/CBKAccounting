@@ -1,4 +1,4 @@
-# **CBKACCOUNTING CLOUD FUNCTIONS DOCUMENTATION**
+# **CBKACCOUNTING DOCUMENTATION**
 
 ## **Objective:**
 
@@ -47,8 +47,7 @@
 form-data: assets/inputData.csv
 }`
 
-# CBKAccounting
-DEVELOPER REFERENCES:
+## DEVELOPER REFERENCES:
 
 Firebase Cloud Functions:
 - https://firebase.google.com/docs/functions
