@@ -28,14 +28,14 @@
 
 #### 1. Call a POST request to "XERO INPUT MAIN" Function (URL: https://us-central1-cbkaccounting.cloudfunctions.net/xeroInputMain)
 #### 2. Requirements for your request header:
-- **Authorization** - parse in the CHUMBAKA_SECRET_KEY
+<!-- - **Authorization** - parse in the CHUMBAKA_SECRET_KEY -->
 - **Content-Type** - should be set to "multipart/form-data"
 
 #### 3. Requirements for body:
 - **Key** - FIELD_NAME
 - **Value** - Must be a file of .CSV format
 
-#### 4. Additional notes:
+#### 4. Important notes:
 - You must only parse in 1 CSV file per request
 - Your one CSV file can have multiple lines of transactions, each of them will be processed
 
