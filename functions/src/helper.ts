@@ -228,8 +228,46 @@ export const validateBearerAuthToken = async (request: functions.https.Request, 
       return result;
     }
   } catch (error) {
-    const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: An error has occured on our end. No action was perfomed." };
+    const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: An error has occured on our end. No action was perfomed.", statusCode: 500 };
     return result;
   }
+};
+
+export const validateIpAddress = async (ip: string, firestore: FirebaseFirestore.Firestore): Promise<ReturnValue> => {
+  try {
+    const doc = await firestore.collection("CBKAccounting").doc("details").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) {
+      const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: Cannot read database.", statusCode: 500 };
+      return result;
+    }
+
+    const listOfWhiteListedIps: string[] | undefined = dataMap["whitelisted_ip"];
+    if (listOfWhiteListedIps) {
+      if (listOfWhiteListedIps.includes(ip)) {
+        const result: ReturnValue = { success: true, value: "Valid access." };
+        return result;
+      } else {
+        const result: ReturnValue = { success: false, value: "INVALID ACCESS: You do not have access to this url." };
+        return result;
+      }
+    } else {
+      const result: ReturnValue = { success: false, value: "INVALID ACCESS: You do not have access to this url." };
+      return result;
+    }
+  } catch (error) {
+    const result: ReturnValue = { success: false, value: ("INTERNAL SERVER ERROR: " + error), statusCode: 500 };
+    return result;
+  }
+
+};
+
+export const generateFirebaseOTP = async (firestore: FirebaseFirestore.Firestore): Promise<string> => {
+  const newOTP = Math.floor(100000 + Math.random() * 900000).toString();
+
+  firestore.collection("CBKAccounting").doc("details").update({ "otp": newOTP });
+
+  return newOTP;
 
 };

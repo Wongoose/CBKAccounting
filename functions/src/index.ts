@@ -1,5 +1,4 @@
 import * as functions from "firebase-functions";
-import nodeRequest = require("request");
 import base64 = require("base-64");
 import config from "./config/config";
 import admin = require("firebase-admin");
@@ -7,28 +6,25 @@ import Busboy = require("busboy");
 import os = require("os");
 import fs = require("fs");
 import path = require("path");
-import { post, readCSV, validateBearerAuthToken, xeroCreateBankTransaction, xeroGetTenantConnections, xeroRefreshAccessToken, XeroTransactionObject } from "./helper";
+import { generateFirebaseOTP, post, readCSV, ReturnValue, validateBearerAuthToken, validateIpAddress, xeroCreateBankTransaction, xeroGetTenantConnections, xeroRefreshAccessToken, XeroTransactionObject } from "./helper";
+// import { signInEmailWithLink } from "./auth";
+// import open = require("open");
+
 
 admin.initializeApp();
 const db = admin.firestore();
+// const auth = admin.auth();
 const cbkAccountingCollection = db.collection("CBKAccounting");
 
 const { client_id, client_secret } = config;
 
-console.log("Client ID is: " + client_id);
-console.log("Client Secret is: " + client_secret);
+// console.log("Client ID is: " + client_id);
+// console.log("Client Secret is: " + client_secret);
 
 const FUNCTION_AUTH_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroManualAuth";
 const FUNCTION_REDIRECT_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
 // const FUNCTION_AUTH_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroManualAuth";
 // const FUNCTION_REDIRECT_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
-
-// const global_xeroGetTenantConnections = "http://localhost:5001/cbkaccounting/us-central1/xeroGetTenantConnections";
-// const global_xeroRefresh = "http://localhost:5001/cbkaccounting/us-central1/xeroRefresh";
-// const global_xeroCreateBankTransaction = "http://localhost:5001/cbkaccounting/us-central1/xeroCreateBankTransaction";
-// const global_xeroGetTenantConnections = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroGetTenantConnections";
-// const global_xeroRefresh = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRefresh";
-// const global_xeroCreateBankTransaction = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroCreateBankTransaction";
 
 type Parameters = {
   client_id: string | undefined;
@@ -41,9 +37,13 @@ type Parameters = {
   state?: string;
 }
 
-exports.xeroManualAuth = functions.https.onRequest((request, response) => {
+// NEXT: Add further authentication
+exports.xeroManualAuth = functions.https.onRequest(async (request, response) => {
 
   console.log("\nSTART OF xeroAuth\n");
+
+  // const adminEmail = request.query["adminEmail"] as string;
+  const MY_OTP = request.query["code"] as string;
 
   const params: Parameters = {
     client_id: client_id,
@@ -54,9 +54,35 @@ exports.xeroManualAuth = functions.https.onRequest((request, response) => {
   };
 
   const url = `https://login.xero.com/identity/connect/authorize?response_type=${params.response_type}&client_id=${params.client_id}&redirect_uri=${FUNCTION_REDIRECT_URL}&scope=${params.scope}&state=${params.state}`;
-  console.log("URL is: " + url);
 
-  response.redirect(301, url);
+  const doc = await db.collection("CBKAccounting").doc("details").get();
+  const dataMap = doc.data();
+
+  if (dataMap === undefined) throw Error("Access Token or Xero Tenant ID not found");
+
+  const firebaseOTP = dataMap["otp"];
+
+  // Validate OTP "code" query parameters
+  if (MY_OTP == firebaseOTP) {
+    // update with new 6 digit code
+    await generateFirebaseOTP(db);
+    response.redirect(301, url);
+  } else {
+    response.status(403).send("UNAUTHORIZED: Invalid OTP. Please try again.");
+  }
+
+  // NOT USED
+  // const { success, value, statusCode } = await signInEmailWithLink(adminEmail, url, auth);
+
+  // if (!success) {
+  //   console.log(value);
+  //   response.status(statusCode ?? 403).send(value?.toString());
+  //   return;
+  // }
+  // await open(url);
+  // response.status(200).send("Opening Redirect URL");
+
+
 });
 
 exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) => {
@@ -126,6 +152,14 @@ exports.xeroGetTenantConnections = functions.https.onRequest(async (request, res
     return;
   }
 
+  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+  if (!resultIP.success) {
+    console.log(resultIP.value);
+    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+    return;
+  }
+
   const cbkAccountingCollection = db.collection("CBKAccounting");
   const doc = await cbkAccountingCollection.doc("tokens").get();
   const dataMap = doc.data();
@@ -149,6 +183,8 @@ exports.xeroGetTenantConnections = functions.https.onRequest(async (request, res
 exports.xeroRefreshToken = functions.https.onRequest(async (request, response) => {
   console.log("\nCLOUD FUNCTION START OF xeroRefreshToken:\n");
 
+  console.log("xeroinputMain | RAN from request IP: " + request.ips[0]);
+
   const { success, value, statusCode } = await validateBearerAuthToken(request, db);
 
   if (!success) {
@@ -157,7 +193,16 @@ exports.xeroRefreshToken = functions.https.onRequest(async (request, response) =
     return;
   }
 
-  console.log("xeroinputMain | RAN from request host: " + request.headers.host);
+  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+  if (!resultIP.success) {
+    console.log(resultIP.value);
+    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+    return;
+  }
+
+  // console.log("xeroinputMain | RAN from request headers x-forwarded-for: " + request.headers["x-forwarded-for"]);
+  // console.log("xeroinputMain | RAN from request socket.remoteAddress: " + request.socket.remoteAddress);
   // console.log("xeroinputMain | RAN from request X-Forwarded-For: " + request.headers["X-Forwared-For"]);
   // console.log("xeroinputMain | RAN from request connection: " + request.headers.connection);
   // console.log("xeroinputMain | RAN from request IP: " + request.ip);
@@ -177,13 +222,29 @@ exports.xeroRefreshToken = functions.https.onRequest(async (request, response) =
 });
 
 exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, response) => {
-  const statusCode = await xeroCreateBankTransaction(db, request.body);
+  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
 
-  if (statusCode !== 200) {
+  if (!success) {
+    console.log(value);
+    response.status(statusCode ?? 403).send(value?.toString());
+    return;
+  }
+
+  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+  if (!resultIP.success) {
+    console.log(resultIP.value);
+    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+    return;
+  }
+
+  const status = await xeroCreateBankTransaction(db, request.body);
+
+  if (status !== 200) {
     console.log("Cloud Function xeroCreateBankTransaction | Failed");
     response.status(500).send("Failed to create Bank Transaction in Xero");
   } else {
-    response.status(200).send("SUCCESS! \n\nReference data you'd uploaded:\n\n" + JSON.stringify(request.body));
+    response.status(200).send("SUCCESS! \n\nReference data you'd uploaded: \n\n" + JSON.stringify(request.body));
   }
 });
 
@@ -201,6 +262,14 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
   if (!success) {
     console.log(value);
     response.status(statusCode ?? 403).send(value?.toString());
+    return;
+  }
+
+  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+  if (!resultIP.success) {
+    console.log(resultIP.value);
+    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
     return;
   }
 
@@ -311,12 +380,16 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
       "bankTransactions": listOfFormattedTransactions,
     };
 
+    const resultOTP = await generateFirebaseOTP(db);
+
+    const NEW_FUNCTION_AUTH_URL = FUNCTION_AUTH_URL + "?code=" + resultOTP;
+
     const statusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
 
     switch (statusCode) {
       case 200:
         console.log("Update transactions successful");
-        response.status(200).send("UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded:\n\n" + JSON.stringify(compiledXeroJson));
+        response.status(200).send("UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson));
         break;
 
       case 401: {
@@ -329,13 +402,13 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
           if (retryStatusCode !== 200) {
             console.log("Retry xeroCreateBankTransactions | Failed with statusCode " + retryStatusCode);
             if (retryStatusCode === 403) {
-              response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + FUNCTION_AUTH_URL);
+              response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + NEW_FUNCTION_AUTH_URL);
             } else {
               response.status(500).send("Your function call has been terminated, please try again.");
             }
           } else {
             console.log("Update transactions successful");
-            response.status(200).send("UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded:\n\n" + JSON.stringify(compiledXeroJson));
+            response.status(200).send("UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson));
           }
         }
         break;
@@ -343,7 +416,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
 
       case 403:
         console.log("xeroCreateBankTransactions | Unauthorized with organization. Need manual Authentication.");
-        response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + FUNCTION_AUTH_URL);
+        response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + NEW_FUNCTION_AUTH_URL);
         break;
 
       default:

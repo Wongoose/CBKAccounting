@@ -1,0 +1,5 @@
+Type,TransactionId,CurrencyCode,Amount,Date,Description,Email,ContactNumber,Reference,BankCode,AccountCode
+RECEIVE,iPay88: T074745694521,MYR,200,10/1/2021,John Green,name@example.com,60123456789,Tuition Fees,090,7319
+SPEND,maybank2u: 123456789,MYR,150,10/2/2021,7-Eleven,name@example.com,60123456789,Groceries,090,7319
+SPEND,hongleongbank: 123456789,MYR,60,10/3/2021,John Green,name@example.com,60123456789,Gift,090,7319
+SPEND,iPay88: 123456789,MYR,10,10/4/2021,John Green,name@example.com,60123456789,Chumbaka Fees,090,7319
