@@ -76,7 +76,7 @@ export const xeroCreateBankTransaction = async (
     });
 
     console.log("xeroCreateBankTransaction | statusCode:", statusCode);
-    console.log("xeroCreateBankTransaction | body:", body);
+    console.log("xeroCreateBankTransaction | body:", body != null);
 
     return statusCode;
   } catch (error) {

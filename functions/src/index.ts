@@ -21,10 +21,10 @@ const { client_id, client_secret } = config;
 // console.log("Client ID is: " + client_id);
 // console.log("Client Secret is: " + client_secret);
 
-const FUNCTION_AUTH_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroManualAuth";
-const FUNCTION_REDIRECT_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
-// const FUNCTION_AUTH_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroManualAuth";
-// const FUNCTION_REDIRECT_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
+// const FUNCTION_AUTH_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroManualAuth";
+// const FUNCTION_REDIRECT_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
+const FUNCTION_AUTH_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroManualAuth";
+const FUNCTION_REDIRECT_URL = "https://us-central1-cbkaccounting.cloudfunctions.net/xeroRedirectUrl";
 
 type Parameters = {
   client_id: string | undefined;
@@ -37,7 +37,6 @@ type Parameters = {
   state?: string;
 }
 
-// NEXT: Add further authentication
 exports.xeroManualAuth = functions.https.onRequest(async (request, response) => {
 
   console.log("\nSTART OF xeroAuth\n");
@@ -420,8 +419,8 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
         break;
 
       default:
-        console.log("xeroCreateBankTransactions | Failed functions called.");
-        response.status(500).send("No data has been processed for this endpoint. This endpoint is expecting BankTransaction data to be specifed in the request body.");
+        console.log("xeroCreateBankTransactions | Failed functions catch with statusCode: " + statusCode);
+        response.status(500).send("POSSIBLE INVALID CSV FORMAT: No data has been processed for this endpoint. This endpoint is expecting BankTransaction data to be specifed in the request body. Please check your CSV file and try again.");
     }
 
     // const url = global_xeroCreateBankTransaction;

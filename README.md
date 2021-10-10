@@ -39,6 +39,7 @@
 - **Value** - CSV_FILE (Must only be a file of .CSV format)
 
 #### 4. Important notes:
+- The CSV file must have a specific format as shown in the directory documentaion/tempate.csv
 - You can find the CSV file template under the documentation folder
 - You must only parse in 1 CSV file per request
 - Your one CSV file can have multiple lines of transactions, each of them will be processed
