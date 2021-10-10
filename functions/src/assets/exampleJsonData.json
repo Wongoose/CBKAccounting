@@ -1,0 +1,22 @@
+{
+    "bankTransactions": [
+        {
+            "Type": "SPEND",
+            "Contact": {
+                "Name": "h39eh3e-3dej3dj3"
+            },
+            "LineItems": [
+                {
+                    "description": "Foobar",
+                    "quantity": 1.0,
+                    "unitAmount": 20.0,
+                    "accountCode": "404"
+                }
+            ],
+            "BankAccount": {
+                "AccountID": "00000000-0000-0000-0000-000000000000",
+                "code": "BANK-ipay88"
+            }
+        }
+    ]
+}
