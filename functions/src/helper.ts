@@ -5,6 +5,7 @@ import config from "./config/config";
 import base64 = require("base-64");
 import fs = require("fs");
 import * as functions from "firebase-functions";
+import jwt = require("jsonwebtoken");
 
 const { client_id, client_secret } = config;
 
@@ -45,7 +46,7 @@ export type XeroParameters = {
 }
 
 export type ReturnValue = {
-  success: boolean, value: string | undefined, statusCode?: number,
+  success: boolean, value: string | jwt.JwtPayload | undefined, statusCode?: number,
 }
 
 export const xeroCreateBankTransaction = async (
@@ -271,3 +272,4 @@ export const generateFirebaseOTP = async (firestore: FirebaseFirestore.Firestore
   return newOTP;
 
 };
+

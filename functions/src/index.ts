@@ -7,6 +7,7 @@ import os = require("os");
 import fs = require("fs");
 import path = require("path");
 import { generateFirebaseOTP, post, readCSV, ReturnValue, validateBearerAuthToken, validateIpAddress, xeroCreateBankTransaction, xeroGetTenantConnections, xeroRefreshAccessToken, XeroTransactionObject } from "./helper";
+import jwt = require("jsonwebtoken");
 // import { signInEmailWithLink } from "./auth";
 // import open = require("open");
 
@@ -249,6 +250,161 @@ exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, re
 
 // this is the main body function (called by webhooks)
 exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
+  // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
+
+  if (request.method !== "POST") {
+    response.status(405).send("You have sent an invalid response to this url. No action performed.");
+    return;
+  }
+
+  // CODE NOT USED
+  // const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+  // if (!success) {
+  //   console.log(value);
+  //   response.status(statusCode ?? 403).send(value?.toString());
+  //   return;
+  // }
+
+  // IP WHITELISTING NOT USED
+  // const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+  // if (!resultIP.success) {
+  //   console.log(resultIP.value);
+  //   response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+  //   return;
+  // }
+
+  const token = request.headers.authorization?.split(" ")[1];
+  console.log("verifyJwt | token is: " + token);
+  console.log("verifyJwt | body is: " + request.body);
+
+  if (token === undefined) {
+    response.status(403).send("UNAUTHORIZED: Could not find token in authorization header");
+    return;
+  }
+
+  const doc = await db.collection("CBKAccounting").doc("webhooks").get();
+  const dataMap = doc.data();
+
+  if (dataMap === undefined) {
+    response.status(500).send("INTERNAL SERVER ERROR: Could not read database.");
+    return;
+  }
+
+  const secretKey = dataMap["secret_key"];
+
+  jwt.verify(token, secretKey, { algorithms: ["HS256"] }, async function (error, decoded) {
+    if (error) {
+      // invalid token - reject request
+      response.status(403).send("UNAUTHORIZED: Your authorization token is invalid. Error: " + error.message);
+      return;
+    } else {
+      if (decoded?.id && request.body.id && decoded?.id === request.body.id) {
+        // payment id is a match - jwt payload && request.body
+
+        console.log("\nJWT VERIFY FLOW SUCCESS! PAYLOAD ID MATCHED.\n");
+
+        const listOfFormattedTransactions: XeroTransactionObject[] = [];
+        const transaction: Record<string, string> = request.body;
+        // FUTURE IMPLEMENTATION - request body may hold a list of transactions
+
+        console.log("PAYLOAD TEST | Name: " + transaction.name);
+        console.log("PAYLOAD TEST | Email: " + transaction.email);
+
+        const xeroTransactionObject: XeroTransactionObject = {
+          "Type": "RECEIVE",
+          "Reference": transaction.remarks + " | iPay88",
+          "Date": "2021-10-14",
+          "CurrencyCode": transaction.currency,
+          "Contact": {
+            "Name": transaction.name,
+            "EmailAddress": transaction.email ?? transaction.student_email,
+            "Phones": [
+              {
+                "PhoneType": "MOBILE",
+                "PhoneNumber": transaction.phone,
+              },
+            ],
+            "BankAccountDetails": "iPay88" + " | " + transaction.ip_s_bankname,
+          },
+          "LineItems": [
+            {
+              "Description": transaction.remarks + " | iPay88 transaction ID: " + transaction.ip_transid,
+              "ItemCode": transaction.id,
+              "Quantity": 1.0,
+              "UnitAmount": transaction.ip_amount,
+              "AccountCode": "404",
+
+            },
+          ],
+          "BankAccount": {
+            "Code": "090",
+          },
+        };
+
+        listOfFormattedTransactions.push(xeroTransactionObject);
+
+        const compiledXeroJson = {
+          "bankTransactions": listOfFormattedTransactions,
+        };
+
+        const resultOTP = await generateFirebaseOTP(db);
+
+        const NEW_FUNCTION_AUTH_URL = FUNCTION_AUTH_URL + "?code=" + resultOTP;
+
+        const statusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+
+        switch (statusCode) {
+          case 200:
+            console.log("Update transactions successful");
+            response.status(200).send("UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson));
+            break;
+
+          case 401: {
+            const refreshSuccess = await xeroRefreshAccessToken(db);
+            if (!refreshSuccess) {
+              console.log("xeroRefreshAccessToken | Failed");
+              response.status(401).send("You are not authorized.");
+            } else {
+              const retryStatusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+              if (retryStatusCode !== 200) {
+                console.log("Retry xeroCreateBankTransactions | Failed with statusCode " + retryStatusCode);
+                if (retryStatusCode === 403) {
+                  response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + NEW_FUNCTION_AUTH_URL);
+                } else {
+                  response.status(500).send("Your function call has been terminated, please try again.");
+                }
+              } else {
+                console.log("Update transactions successful");
+                response.status(200).send("UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson));
+              }
+            }
+            break;
+          }
+
+          case 403:
+            console.log("xeroCreateBankTransactions | Unauthorized with organization. Need manual Authentication.");
+            response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + NEW_FUNCTION_AUTH_URL);
+            break;
+
+          default:
+            console.log("xeroCreateBankTransactions | Failed functions catch with statusCode: " + statusCode);
+            response.status(500).send("POSSIBLE INVALID CSV FORMAT: No data has been processed for this endpoint. This endpoint is expecting BankTransaction data to be specifed in the request body. Please check your CSV file and try again.");
+        }
+
+
+      } else {
+        console.log("\nJWT VERIFY FAILED because payload ID mismatched\n");
+        response.status(400).send("INVALID REQUEST: Payload ID mismatched. (No action was called to Xero API, please try again)");
+        return;
+      }
+    }
+  });
+});
+
+// FUNCTION NOT USED - INPUT CSV FILE
+exports.inputFile = functions.https.onRequest(async (request, response) => {
   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
 
   if (request.method !== "POST") {
