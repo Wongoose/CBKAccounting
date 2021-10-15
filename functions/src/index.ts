@@ -17,7 +17,7 @@ const db = admin.firestore();
 // const auth = admin.auth();
 const cbkAccountingCollection = db.collection("CBKAccounting");
 
-const { client_id, client_secret } = config;
+const { client_id, client_secret, jwt_secret_key } = config;
 
 // console.log("Client ID is: " + client_id);
 // console.log("Client Secret is: " + client_secret);
@@ -38,6 +38,7 @@ type Parameters = {
   state?: string;
 }
 
+// XERO MANUAL AUTH - INITIAL DEPLOYMENT FUNCTION
 exports.xeroManualAuth = functions.https.onRequest(async (request, response) => {
 
   console.log("\nSTART OF xeroAuth\n");
@@ -85,6 +86,7 @@ exports.xeroManualAuth = functions.https.onRequest(async (request, response) => 
 
 });
 
+// REDIRECTED FROM XERO MANUAL AUTH
 exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) => {
 
   const { code, error } = request.query;
@@ -142,118 +144,15 @@ exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) =>
   }
 });
 
-exports.xeroGetTenantConnections = functions.https.onRequest(async (request, response) => {
-
-  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
-
-  if (!success) {
-    console.log(value);
-    response.status(statusCode ?? 403).send(value?.toString());
-    return;
-  }
-
-  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
-
-  if (!resultIP.success) {
-    console.log(resultIP.value);
-    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
-    return;
-  }
-
-  const cbkAccountingCollection = db.collection("CBKAccounting");
-  const doc = await cbkAccountingCollection.doc("tokens").get();
-  const dataMap = doc.data();
-
-  if (dataMap === undefined) throw Error("Access Token or Refresh Token not found");
-
-  const accessToken = dataMap["access_token"];
-
-  const getTenantConnectionsSuccess = await xeroGetTenantConnections(db, accessToken);
-
-  if (getTenantConnectionsSuccess) {
-    console.log("Cloud Function xeroGetTenantConnections | Success");
-    response.status(200).send("Xero Tenant ID updated successful.");
-  } else {
-    console.log("Cloud Function xeroGetTenantConnections | Failed");
-    response.status(500).send("Failed to update Xero Tenant ID, please try again.");
-
-  }
-});
-
-exports.xeroRefreshToken = functions.https.onRequest(async (request, response) => {
-  console.log("\nCLOUD FUNCTION START OF xeroRefreshToken:\n");
-
-  console.log("xeroinputMain | RAN from request IP: " + request.ips[0]);
-
-  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
-
-  if (!success) {
-    console.log(value);
-    response.status(statusCode ?? 403).send(value?.toString());
-    return;
-  }
-
-  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
-
-  if (!resultIP.success) {
-    console.log(resultIP.value);
-    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
-    return;
-  }
-
-  // console.log("xeroinputMain | RAN from request headers x-forwarded-for: " + request.headers["x-forwarded-for"]);
-  // console.log("xeroinputMain | RAN from request socket.remoteAddress: " + request.socket.remoteAddress);
-  // console.log("xeroinputMain | RAN from request X-Forwarded-For: " + request.headers["X-Forwared-For"]);
-  // console.log("xeroinputMain | RAN from request connection: " + request.headers.connection);
-  // console.log("xeroinputMain | RAN from request IP: " + request.ip);
-  // console.log("xeroinputMain | RAN from request Origin: " + request.headers.origin);
-  // console.log("xeroinputMain | RAN from request IPs: " + request.ips);
-
-  const refreshSuccess = await xeroRefreshAccessToken(db);
-
-  if (refreshSuccess) {
-    console.log("Cloud Function xeroRefreshToken | Success");
-    response.status(200).send("Access Token and Refresh Token updated successful.");
-  } else {
-    console.log("Cloud Function xeroRefreshToken | Failed");
-    response.status(500).send("Failed to update Access Token and Refresh Token, please try again.");
-  }
-
-});
-
-exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, response) => {
-  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
-
-  if (!success) {
-    console.log(value);
-    response.status(statusCode ?? 403).send(value?.toString());
-    return;
-  }
-
-  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
-
-  if (!resultIP.success) {
-    console.log(resultIP.value);
-    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
-    return;
-  }
-
-  const status = await xeroCreateBankTransaction(db, request.body);
-
-  if (status !== 200) {
-    console.log("Cloud Function xeroCreateBankTransaction | Failed");
-    response.status(500).send("Failed to create Bank Transaction in Xero");
-  } else {
-    response.status(200).send("SUCCESS! \n\nReference data you'd uploaded: \n\n" + JSON.stringify(request.body));
-  }
-});
-
-// this is the main body function (called by webhooks)
+// MAIN BODY FUNCTION - CALLED BY WEBHOOK
 exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
 
   if (request.method !== "POST") {
-    response.status(405).send("You have sent an invalid response to this url. No action performed.");
+    response.status(405).send({
+      error: "METHOD-NOT-ALLOWED",
+      message: "You have sent an invalid response to this URL. Please use POST request instead.",
+    });
     return;
   }
 
@@ -280,24 +179,29 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
   console.log("verifyJwt | body is: " + request.body);
 
   if (token === undefined) {
-    response.status(403).send("UNAUTHORIZED: Could not find token in authorization header");
+    response.status(403).send({
+      error: "MISSING-TOKEN",
+      message: "Could not find token in authorization header. Request rejected.",
+    });
     return;
   }
 
-  const doc = await db.collection("CBKAccounting").doc("webhooks").get();
-  const dataMap = doc.data();
-
-  if (dataMap === undefined) {
-    response.status(500).send("INTERNAL SERVER ERROR: Could not read database.");
+  if (jwt_secret_key === undefined) {
+    response.status(500).send({
+      error: "INTERNAL-SERVER-ERROR",
+      message:
+        "Missing JSON Web Token secret key in our server. Please contact your Firebase Cloud Functions Developer at wong.zhengxiang@gmail.com.",
+    });
     return;
   }
 
-  const secretKey = dataMap["secret_key"];
-
-  jwt.verify(token, secretKey, { algorithms: ["HS256"] }, async function (error, decoded) {
+  jwt.verify(token, jwt_secret_key, { algorithms: ["HS256"] }, async function (error, decoded) {
     if (error) {
       // invalid token - reject request
-      response.status(403).send("UNAUTHORIZED: Your authorization token is invalid. Error: " + error.message);
+      response.status(403).send({
+        error: "JWT-VERIFY-ERROR",
+        message: error.message,
+      });
       return;
     } else {
       if (decoded?.id && request.body.id && decoded?.id === request.body.id) {
@@ -311,11 +215,14 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
 
         console.log("PAYLOAD TEST | Name: " + transaction.name);
         console.log("PAYLOAD TEST | Email: " + transaction.email);
+        console.log("PAYLOAD TEST | Date: " + transaction.transaction_date);
+
+        functions.logger.info("PAYLOAD DATA: " + JSON.stringify(transaction));
 
         const xeroTransactionObject: XeroTransactionObject = {
           "Type": "RECEIVE",
           "Reference": transaction.remarks + " | iPay88",
-          "Date": "2021-10-14",
+          "Date": transaction.transaction_date,
           "CurrencyCode": transaction.currency,
           "Contact": {
             "Name": transaction.name,
@@ -331,7 +238,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
           "LineItems": [
             {
               "Description": transaction.remarks + " | iPay88 transaction ID: " + transaction.ip_transid,
-              "ItemCode": transaction.id,
+              // "ItemCode": transaction.id,
               "Quantity": 1.0,
               "UnitAmount": transaction.ip_amount,
               "AccountCode": "404",
@@ -353,31 +260,57 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
 
         const NEW_FUNCTION_AUTH_URL = FUNCTION_AUTH_URL + "?code=" + resultOTP;
 
-        const statusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+        const { statusCode, body, error } = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
 
         switch (statusCode) {
           case 200:
             console.log("Update transactions successful");
-            response.status(200).send("UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson));
+            functions.logger.info("UDPATE TRANSACTION SUCCESSFUL");
+            // May want to redirect to webpage with UI explanation - IF SUCCESS 200
+
+            response.status(200).send({
+              message: "UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson),
+            });
+
             break;
 
           case 401: {
             const refreshSuccess = await xeroRefreshAccessToken(db);
             if (!refreshSuccess) {
               console.log("xeroRefreshAccessToken | Failed");
-              response.status(401).send("You are not authorized.");
+              functions.logger.info("AUTO REFRESH | FAILED - NO ACTION WAS PERFORMED TO XERO");
+              response.status(401).send({
+                error: "XERO-ERROR",
+                messsage: "Failed to auto-refresh xero access token. Function terminated.",
+              });
             } else {
-              const retryStatusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+              const retryResult = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+              const retryStatusCode = retryResult.statusCode;
+              const retryBody = retryResult.body;
+              const retryError = retryResult.error;
+
               if (retryStatusCode !== 200) {
                 console.log("Retry xeroCreateBankTransactions | Failed with statusCode " + retryStatusCode);
                 if (retryStatusCode === 403) {
-                  response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + NEW_FUNCTION_AUTH_URL);
+                  functions.logger.info("AUTO RETRY CREATE TRANSACTIONS | FAILED - APP IS UNAUTHORIZED, NEED MANUAL AUTH. LINK: \n" + NEW_FUNCTION_AUTH_URL);
+
+                  response.status(403).send({
+                    error: "XERO-NEED-MANUAL-AUTH",
+                    message: "This app is not authorized to connect with your organization. Please manually authorize tihs app to connect with your Xero Organization here:\n" + NEW_FUNCTION_AUTH_URL,
+                    action: NEW_FUNCTION_AUTH_URL,
+                  });
+
                 } else {
-                  response.status(500).send("Your function call has been terminated, please try again.");
+                  functions.logger.info("AUTO RETRY CREATE TRANSACTIONS | UNKOWN ERROR - NO ACTION WAS PERFORMED TO XERO API");
+                  response.status(retryStatusCode).send(retryError ?? retryBody);
                 }
               } else {
                 console.log("Update transactions successful");
-                response.status(200).send("UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson));
+                functions.logger.info("AUTO RETRY CREATE TRANSACTIONS | SUCCESSFUL");
+                response.status(200).send({
+                  error: null, message:
+                    "UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson),
+                });
               }
             }
             break;
@@ -385,25 +318,50 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
 
           case 403:
             console.log("xeroCreateBankTransactions | Unauthorized with organization. Need manual Authentication.");
-            response.status(403).send("This app is unauthorized or the auth has been resetted. Please manually authorize this app to connect with your xero organization here: \n" + NEW_FUNCTION_AUTH_URL);
+            functions.logger.info("CREATE TRANSACTIONS | FAILED - APP IS UNAUTHORIZED, NEED MANUAL AUTH. LINK: \n" + NEW_FUNCTION_AUTH_URL);
+            response.status(403).send({
+              error: "XERO-NEED-MANUAL-AUTH",
+              message: "This app is not authorized to connect with your organization. Please manually authorize tihs app to connect with your Xero Organization here:\n" + NEW_FUNCTION_AUTH_URL,
+              action: NEW_FUNCTION_AUTH_URL,
+            });
+            break;
+
+          case 500:
+            console.log("xeroCreateBankTransactions | Failed with internal catch error: " + error);
+            functions.logger.error("xeroCreateBankTransactions | Failed with internal catch error: " + error);
+
+            response.status(500).send({
+              error: "INTERNAL-SERVER-ERROR",
+              message: error + "\n\nNOTE: Please contact your Firebase Cloud Functions Developer at wong.zhengxiang@gmail.com.",
+            });
+
             break;
 
           default:
-            console.log("xeroCreateBankTransactions | Failed functions catch with statusCode: " + statusCode);
-            response.status(500).send("POSSIBLE INVALID CSV FORMAT: No data has been processed for this endpoint. This endpoint is expecting BankTransaction data to be specifed in the request body. Please check your CSV file and try again.");
+            console.log("xeroCreateBankTransactions | Failed with internal XERO error:\n" + body);
+            functions.logger.error("xeroCreateBankTransactions | Failed with internal XERO error:\n" + body);
+            response.status(statusCode).send({
+              error: "XERO-ERROR",
+              message: "NOTE: An error has occured while calling the XERO API. Your request has been terminated. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com." + "\n\nRESPONSE BODY FROM XERO:\n\n" + body,
+            });
         }
 
 
       } else {
         console.log("\nJWT VERIFY FAILED because payload ID mismatched\n");
-        response.status(400).send("INVALID REQUEST: Payload ID mismatched. (No action was called to Xero API, please try again)");
+        functions.logger.error("\nJWT VERIFY FAILED because payload ID mismatched\n");
+        response.status(403).send({
+          error: "MISMATCHED-PAYLOAD",
+          message:
+            "Your JSON Web Token decoded payload does not match with your request body. Request rejected",
+        });
         return;
       }
     }
   });
 });
 
-// FUNCTION NOT USED - INPUT CSV FILE
+// NOT USED - INPUT CSV FILE
 exports.inputFile = functions.https.onRequest(async (request, response) => {
   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
 
@@ -539,7 +497,7 @@ exports.inputFile = functions.https.onRequest(async (request, response) => {
 
     const NEW_FUNCTION_AUTH_URL = FUNCTION_AUTH_URL + "?code=" + resultOTP;
 
-    const statusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+    const { statusCode } = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
 
     switch (statusCode) {
       case 200:
@@ -553,7 +511,8 @@ exports.inputFile = functions.https.onRequest(async (request, response) => {
           console.log("xeroRefreshAccessToken | Failed");
           response.status(401).send("You are not authorized.");
         } else {
-          const retryStatusCode = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+          const retryResult = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+          const retryStatusCode = retryResult.statusCode;
           if (retryStatusCode !== 200) {
             console.log("Retry xeroCreateBankTransactions | Failed with statusCode " + retryStatusCode);
             if (retryStatusCode === 403) {
@@ -605,4 +564,114 @@ exports.inputFile = functions.https.onRequest(async (request, response) => {
 
   busboy.end(request.rawBody);
   // END
+});
+
+// NOT USED
+exports.xeroGetTenantConnections = functions.https.onRequest(async (request, response) => {
+
+  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+  if (!success) {
+    console.log(value);
+    response.status(statusCode ?? 403).send(value?.toString());
+    return;
+  }
+
+  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+  if (!resultIP.success) {
+    console.log(resultIP.value);
+    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+    return;
+  }
+
+  const cbkAccountingCollection = db.collection("CBKAccounting");
+  const doc = await cbkAccountingCollection.doc("tokens").get();
+  const dataMap = doc.data();
+
+  if (dataMap === undefined) throw Error("Access Token or Refresh Token not found");
+
+  const accessToken = dataMap["access_token"];
+
+  const getTenantConnectionsSuccess = await xeroGetTenantConnections(db, accessToken);
+
+  if (getTenantConnectionsSuccess) {
+    console.log("Cloud Function xeroGetTenantConnections | Success");
+    response.status(200).send("Xero Tenant ID updated successful.");
+  } else {
+    console.log("Cloud Function xeroGetTenantConnections | Failed");
+    response.status(500).send("Failed to update Xero Tenant ID, please try again.");
+
+  }
+});
+
+// NOT USED
+exports.xeroRefreshToken = functions.https.onRequest(async (request, response) => {
+  console.log("\nCLOUD FUNCTION START OF xeroRefreshToken:\n");
+
+  console.log("xeroinputMain | RAN from request IP: " + request.ips[0]);
+
+  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+  if (!success) {
+    console.log(value);
+    response.status(statusCode ?? 403).send(value?.toString());
+    return;
+  }
+
+  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+  if (!resultIP.success) {
+    console.log(resultIP.value);
+    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+    return;
+  }
+
+  // console.log("xeroinputMain | RAN from request headers x-forwarded-for: " + request.headers["x-forwarded-for"]);
+  // console.log("xeroinputMain | RAN from request socket.remoteAddress: " + request.socket.remoteAddress);
+  // console.log("xeroinputMain | RAN from request X-Forwarded-For: " + request.headers["X-Forwared-For"]);
+  // console.log("xeroinputMain | RAN from request connection: " + request.headers.connection);
+  // console.log("xeroinputMain | RAN from request IP: " + request.ip);
+  // console.log("xeroinputMain | RAN from request Origin: " + request.headers.origin);
+  // console.log("xeroinputMain | RAN from request IPs: " + request.ips);
+
+  const refreshSuccess = await xeroRefreshAccessToken(db);
+
+  if (refreshSuccess) {
+    console.log("Cloud Function xeroRefreshToken | Success");
+    response.status(200).send("Access Token and Refresh Token updated successful.");
+  } else {
+    console.log("Cloud Function xeroRefreshToken | Failed");
+    response.status(500).send("Failed to update Access Token and Refresh Token, please try again.");
+  }
+
+});
+
+// NOT USED
+exports.xeroCreateBankTransaction = functions.https.onRequest(async (request, response) => {
+  const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+  if (!success) {
+    console.log(value);
+    response.status(statusCode ?? 403).send(value?.toString());
+    return;
+  }
+
+  const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+  if (!resultIP.success) {
+    console.log(resultIP.value);
+    response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+    return;
+  }
+
+  const result = await xeroCreateBankTransaction(db, request.body);
+  const status = result.statusCode;
+
+  if (status !== 200) {
+    console.log("Cloud Function xeroCreateBankTransaction | Failed");
+    response.status(500).send("Failed to create Bank Transaction in Xero");
+  } else {
+    response.status(200).send("SUCCESS! \n\nReference data you'd uploaded: \n\n" + JSON.stringify(request.body));
+  }
 });

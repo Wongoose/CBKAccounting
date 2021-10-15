@@ -79,10 +79,10 @@ export const xeroCreateBankTransaction = async (
     console.log("xeroCreateBankTransaction | statusCode:", statusCode);
     console.log("xeroCreateBankTransaction | body:", body != null);
 
-    return statusCode;
+    return { statusCode, body, error: null };
   } catch (error) {
     console.error(error);
-    return null;
+    return { statusCode: 500, body: null, error };
   }
 };
 
