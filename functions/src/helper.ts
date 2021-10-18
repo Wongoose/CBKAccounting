@@ -6,8 +6,9 @@ import base64 = require("base-64");
 import fs = require("fs");
 import * as functions from "firebase-functions";
 import jwt = require("jsonwebtoken");
+import nodeMailer = require("nodemailer");
 
-const { client_id, client_secret } = config;
+const { client_id, client_secret, gmailEmail, gmailPassword } = config;
 
 const XERO_BANK_TRANSACTIONS_URL = "https://api.xero.com/api.xro/2.0/BankTransactions";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
@@ -273,3 +274,124 @@ export const generateFirebaseOTP = async (firestore: FirebaseFirestore.Firestore
 
 };
 
+export const generateTransactionLog = async (firestore: FirebaseFirestore.Firestore, timestamp: FirebaseFirestore.FieldValue, transaction: Record<string, any>, success: boolean, error?: string): Promise<ReturnValue> => {
+  try {
+    // add time stamp
+    console.log("Generating logs...");
+    transaction["xero_success"] = success.toString();
+    transaction["log_error"] = error ?? "";
+
+
+    const getExistingLogSnap = await firestore.collection("testLogs").where("ip_transid", "==", transaction.ip_transid).get();
+    if (getExistingLogSnap.docs.length == 0) {
+      // no existing logs - create new
+      console.log("Creating new log...");
+
+      const addResult = await firestore.collection("testLogs").add(transaction);
+
+      if (!addResult.id) {
+        const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: Cannot add log to database.", statusCode: 500 };
+        return result;
+      } else {
+        await firestore.collection("testLogs").doc(addResult.id).update({
+          "log_created": timestamp,
+          "log_updated": timestamp,
+        });
+        const result: ReturnValue = { success: true, value: addResult.id };
+        return result;
+      }
+
+    } else {
+      console.log("Updating existing log...");
+      const docID = getExistingLogSnap.docs[0].id;
+      const updateResult = await firestore.collection("testLogs").doc(docID).update(transaction);
+
+      if (updateResult) {
+        await firestore.collection("testLogs").doc(docID).update({
+          "log_updated": timestamp,
+        });
+        const result: ReturnValue = { success: true, value: docID };
+        return result;
+      } else {
+        const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: Cannot update log to database.", statusCode: 500 };
+        return result;
+      }
+    }
+
+  } catch (error) {
+    console.log("generateLogs | Failed with catch error: " + error);
+    const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: Cannot read database.", statusCode: 500 };
+    return result;
+  }
+};
+
+// export const sendEmail = async () => {
+//   try {
+//     console.log("Sending email...");
+//     if (!sendgrid_api_key) {
+//       // internal error no api key
+//       console.log("INTERNAL SERVER ERROR: No sendgrod_api_key found!");
+//       return;
+//     }
+//     sgMail.setApiKey(sendgrid_api_key);
+
+//     const msg = {
+//       to: "wong.zhengxiang@gmail.com",
+//       from: "wongoose.developer@gmail.com",
+//       subject: "Sending with SendGrid is Fun",
+//       text: "and easy to do anywhere, even with Node.js",
+//     };
+
+//     sgMail.send(msg).then((response) => {
+//       console.log("SENT EMAIL VIA SEND GRID");
+//     }).catch((err) => {
+//       console.log("FAILED TO SEND EMAIL: " + err);
+//     });
+
+//   } catch (error) {
+//     console.log("FAILED TO SEND EMAIL with catch error: " + error);
+//     return;
+//   }
+// };
+type NodeMailDetails = {
+  title: string;
+  message: string;
+  action: string;
+};
+
+export const sendNodeMail = async (firestore: FirebaseFirestore.Firestore, mailMap: NodeMailDetails) => {
+  try {
+    console.log("NODEMAILER running...");
+
+    const doc = await firestore.collection("CBKAccounting").doc("details").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) {
+      console.log("sendNodeMail | Failed");
+      return;
+    }
+
+    const adminEmail = dataMap["admin_email"];
+
+    const transporter = nodeMailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: gmailEmail,
+        pass: gmailPassword,
+      },
+    });
+
+    const mailOptions = {
+      from: "Support from CBKAccounting",
+      to: adminEmail,
+      subject: mailMap.title,
+      text: "FAILED TRANSACTION DETAILS:\n" + mailMap.message + "\n\nFIX:\n" + mailMap.action,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log("SENT EMAIL VIA NODEMAILER");
+  } catch (error) {
+    console.log("FAILED TO SEND EMAIL with catch error: " + error);
+  }
+
+};
