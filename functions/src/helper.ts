@@ -78,7 +78,8 @@ export const xeroCreateBankTransaction = async (
     });
 
     console.log("xeroCreateBankTransaction | statusCode:", statusCode);
-    console.log("xeroCreateBankTransaction | body:", body != null);
+    // console.log("xeroCreateBankTransaction | body:", body != null);
+    console.log("xeroCreateBankTransaction | body:", body);
 
     return { statusCode, body, error: null };
   } catch (error) {
@@ -282,18 +283,18 @@ export const generateTransactionLog = async (firestore: FirebaseFirestore.Firest
     transaction["log_error"] = error ?? "";
 
 
-    const getExistingLogSnap = await firestore.collection("testLogs").where("ip_transid", "==", transaction.ip_transid).get();
+    const getExistingLogSnap = await firestore.collection("transactionLogs").where("ip_transid", "==", transaction.ip_transid).get();
     if (getExistingLogSnap.docs.length == 0) {
       // no existing logs - create new
       console.log("Creating new log...");
 
-      const addResult = await firestore.collection("testLogs").add(transaction);
+      const addResult = await firestore.collection("transactionLogs").add(transaction);
 
       if (!addResult.id) {
         const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: Cannot add log to database.", statusCode: 500 };
         return result;
       } else {
-        await firestore.collection("testLogs").doc(addResult.id).update({
+        await firestore.collection("transactionLogs").doc(addResult.id).update({
           "log_created": timestamp,
           "log_updated": timestamp,
         });
@@ -304,10 +305,10 @@ export const generateTransactionLog = async (firestore: FirebaseFirestore.Firest
     } else {
       console.log("Updating existing log...");
       const docID = getExistingLogSnap.docs[0].id;
-      const updateResult = await firestore.collection("testLogs").doc(docID).update(transaction);
+      const updateResult = await firestore.collection("transactionLogs").doc(docID).update(transaction);
 
       if (updateResult) {
-        await firestore.collection("testLogs").doc(docID).update({
+        await firestore.collection("transactionLogs").doc(docID).update({
           "log_updated": timestamp,
         });
         const result: ReturnValue = { success: true, value: docID };
@@ -394,4 +395,43 @@ export const sendNodeMail = async (firestore: FirebaseFirestore.Firestore, mailM
     console.log("FAILED TO SEND EMAIL with catch error: " + error);
   }
 
+};
+
+export const sendInitMail = async (firestore: FirebaseFirestore.Firestore) => {
+  try {
+    console.log("INITMAIL running...");
+
+    const doc = await firestore.collection("CBKAccounting").doc("details").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) {
+      console.log("sendNodeMail | Failed");
+      return;
+    }
+
+    const adminEmail = dataMap["admin_email"];
+
+    const transporter = nodeMailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: gmailEmail,
+        pass: gmailPassword,
+      },
+    });
+
+    const mailOptions = {
+      from: "Support from CBKAccounting",
+      to: adminEmail,
+      subject: "TO-DO: Beginning of Xero-Firebase service",
+      text: "Please mark this email as NOT SPAM to receive notifications in the future.",
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log("SENT EMAIL VIA NODEMAILER");
+    return;
+  } catch (error) {
+    console.log("FAILED TO SEND INITEMAIL with catch error: " + error);
+    return;
+
+  }
 };

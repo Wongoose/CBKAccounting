@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import base64 = require("base-64");
 import config from "./config/config";
 import admin = require("firebase-admin");
-import { generateFirebaseOTP, generateTransactionLog, post, sendNodeMail, xeroCreateBankTransaction, xeroGetTenantConnections, xeroRefreshAccessToken, XeroTransactionObject } from "./helper";
+import { generateFirebaseOTP, generateTransactionLog, post, sendInitMail, sendNodeMail, xeroCreateBankTransaction, xeroGetTenantConnections, xeroRefreshAccessToken, XeroTransactionObject } from "./helper";
 import jwt = require("jsonwebtoken");
 // import { signInEmailWithLink } from "./auth";
 // import open = require("open");
@@ -50,7 +50,7 @@ exports.xeroManualAuth = functions.https.onRequest(async (request, response) => 
     client_id: client_id,
     client_secret: client_secret,
     response_type: "code",
-    scope: "accounting.transactions",
+    scope: "offline_access accounting.transactions",
     state: "12345678",
   };
 
@@ -241,14 +241,45 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
               // "ItemCode": transaction.id,
               "Quantity": 1.0,
               "UnitAmount": transaction.ip_amount,
-              "AccountCode": "404",
+              "AccountCode": "502-000",
 
             },
           ],
           "BankAccount": {
-            "Code": "090",
+            "Code": "310-S01",
           },
         };
+
+        // const xeroTransactionObject: XeroTransactionObject = {
+        //   "Type": "RECEIVE",
+        //   "Reference": "Test blank reference | iPay88",
+        //   "Date": "2021-10-21",
+        //   "CurrencyCode": transaction.currency,
+        //   "Contact": {
+        //     "Name": "Test blank name",
+        //     "EmailAddress": "test@example.com",
+        //     "Phones": [
+        //       {
+        //         "PhoneType": "MOBILE",
+        //         "PhoneNumber": "60123456789",
+        //       },
+        //     ],
+        //     "BankAccountDetails": "Test iPay88" + " | " + "blank bank name",
+        //   },
+        //   "LineItems": [
+        //     {
+        //       "Description": "Test description | iPay88 transaction ID: example12345678 ",
+        //       // "ItemCode": transaction.id,
+        //       "Quantity": 1.0,
+        //       "UnitAmount": 0.10,
+        //       "AccountCode": "502-000",
+
+        //     },
+        //   ],
+        //   "BankAccount": {
+        //     "Code": "310-S01",
+        //   },
+        // };
 
         listOfFormattedTransactions.push(xeroTransactionObject);
 
@@ -410,4 +441,276 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
     }
   });
 });
+
+exports.sendInitEmail = functions.https.onRequest(async (request, response) => {
+  await sendInitMail(db);
+  response.status(200);
+});
+
+// LATEST FUNCTION
+// exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
+//   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
+
+//   if (request.method !== "POST") {
+//     response.status(405).send({
+//       error: "METHOD-NOT-ALLOWED",
+//       message: "You have sent an invalid response to this URL. Please use POST request instead.",
+//     });
+//     return;
+//   }
+
+//   // CODE NOT USED
+//   // const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+//   // if (!success) {
+//   //   console.log(value);
+//   //   response.status(statusCode ?? 403).send(value?.toString());
+//   //   return;
+//   // }
+
+//   // IP WHITELISTING NOT USED
+//   // const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+//   // if (!resultIP.success) {
+//   //   console.log(resultIP.value);
+//   //   response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+//   //   return;
+//   // }
+
+//   const token = request.headers.authorization?.split(" ")[1];
+//   console.log("verifyJwt | token is: " + token);
+//   console.log("verifyJwt | body is: " + request.body);
+
+//   if (token === undefined) {
+//     response.status(403).send({
+//       error: "MISSING-TOKEN",
+//       message: "Could not find token in authorization header. Request rejected.",
+//     });
+//     return;
+//   }
+
+//   if (jwt_secret_key === undefined) {
+//     response.status(500).send({
+//       error: "INTERNAL-SERVER-ERROR",
+//       message:
+//         "Missing JSON Web Token secret key in our server. Please contact your Firebase Cloud Functions Developer at wong.zhengxiang@gmail.com.",
+//     });
+//     return;
+//   }
+
+//   jwt.verify(token, jwt_secret_key, { algorithms: ["HS256"] }, async function (error, decoded) {
+//     if (error) {
+//       // invalid token - reject request
+//       response.status(403).send({
+//         error: "JWT-VERIFY-ERROR",
+//         message: error.message,
+//       });
+//       return;
+//     } else {
+//       if (decoded?.id && request.body.id && decoded?.id === request.body.id) {
+//         // payment id is a match - jwt payload && request.body
+
+//         console.log("\nJWT VERIFY FLOW SUCCESS! PAYLOAD ID MATCHED.\n");
+
+//         const listOfFormattedTransactions: XeroTransactionObject[] = [];
+//         const transaction: Record<string, string> = request.body;
+//         // FUTURE IMPLEMENTATION - request body may hold a list of transactions
+
+//         console.log("PAYLOAD TEST | Name: " + transaction.name);
+//         console.log("PAYLOAD TEST | Email: " + transaction.email);
+//         console.log("PAYLOAD TEST | Date: " + transaction.transaction_date);
+
+//         functions.logger.info("PAYLOAD DATA: " + JSON.stringify(transaction));
+
+//         const xeroTransactionObject: XeroTransactionObject = {
+//           "Type": "RECEIVE",
+//           "Reference": transaction.remarks + " | iPay88",
+//           "Date": transaction.transaction_date,
+//           "CurrencyCode": transaction.currency,
+//           "Contact": {
+//             "Name": transaction.name,
+//             "EmailAddress": transaction.email ?? transaction.student_email,
+//             "Phones": [
+//               {
+//                 "PhoneType": "MOBILE",
+//                 "PhoneNumber": transaction.phone,
+//               },
+//             ],
+//             "BankAccountDetails": "iPay88" + " | " + transaction.ip_s_bankname,
+//           },
+//           "LineItems": [
+//             {
+//               "Description": transaction.remarks + " | iPay88 transaction ID: " + transaction.ip_transid,
+//               // "ItemCode": transaction.id,
+//               "Quantity": 1.0,
+//               "UnitAmount": transaction.ip_amount,
+//               "AccountCode": "404",
+
+//             },
+//           ],
+//           "BankAccount": {
+//             "Code": "090",
+//           },
+//         };
+
+//         listOfFormattedTransactions.push(xeroTransactionObject);
+
+//         const compiledXeroJson = {
+//           "bankTransactions": listOfFormattedTransactions,
+//         };
+
+//         const resultOTP = await generateFirebaseOTP(db);
+
+//         const NEW_FUNCTION_AUTH_URL = FUNCTION_AUTH_URL + "?code=" + resultOTP;
+
+//         const { statusCode, body, error } = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+
+//         switch (statusCode) {
+//           case 200:
+//             console.log("Update transactions successful");
+//             functions.logger.info("UDPATE TRANSACTION SUCCESSFUL");
+//             // May want to redirect to webpage with UI explanation - IF SUCCESS 200
+
+//             await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, true);
+
+//             response.status(200).send({
+//               message: "UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson),
+//             });
+
+//             break;
+
+//           case 401: {
+//             const refreshSuccess = await xeroRefreshAccessToken(db);
+//             if (!refreshSuccess) {
+//               console.log("xeroRefreshAccessToken | Failed");
+//               functions.logger.info("AUTO REFRESH | FAILED - NO ACTION WAS PERFORMED TO XERO");
+//               await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "XERO-FAIL-REFRESH");
+//               await sendNodeMail(db, {
+//                 title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//                 message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
+//                 action: "Your access to our service may have expired. You will need to re-authorize this service to your Xero Organization after 60 days of inactivity. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
+//               });
+
+//               response.status(401).send({
+//                 error: "XERO-FAIL-REFRESH",
+//                 messsage: "Failed to auto-refresh xero access token. Function terminated.",
+//               });
+//             } else {
+//               const retryResult = await xeroCreateBankTransaction(db, listOfFormattedTransactions);
+//               const retryStatusCode = retryResult.statusCode;
+//               const retryBody = retryResult.body;
+//               const retryError = retryResult.error;
+
+//               if (retryStatusCode !== 200) {
+//                 console.log("Retry xeroCreateBankTransactions | Failed with statusCode " + retryStatusCode);
+//                 if (retryStatusCode === 403) {
+//                   functions.logger.info("AUTO RETRY CREATE TRANSACTIONS | FAILED - APP IS UNAUTHORIZED, NEED MANUAL AUTH. LINK: \n" + NEW_FUNCTION_AUTH_URL);
+
+//                   await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "XERO-NEED-MANUAL-AUTH");
+//                   await sendNodeMail(db, {
+//                     title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//                     message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
+//                     action: "Xero-Firebase service requires manual authentication to your Xero Organization after our recent update. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
+//                   });
+
+//                   response.status(403).send({
+//                     error: "XERO-NEED-MANUAL-AUTH",
+//                     message: "This app is not authorized to connect with your organization. Please manually authorize this app to connect with your Xero Organization here:\n" + NEW_FUNCTION_AUTH_URL,
+//                   });
+
+//                 } else {
+//                   functions.logger.error("AUTO RETRY CREATE TRANSACTIONS | UNKOWN ERROR - NO ACTION WAS PERFORMED TO XERO API");
+//                   functions.logger.error("Status code: " + retryStatusCode + "\nError: " + retryError + "\nBody: " + retryBody);
+//                   await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "INTERNAL-SERVER-ERROR");
+//                   await sendNodeMail(db, {
+//                     title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//                     message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
+//                     action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
+//                   });
+
+//                   response.status(500).send({
+//                     error: "INTERNAL-SERVER-ERROR",
+//                     message: "Failed to retry creating bank transaction in Xero.",
+//                   });
+//                 }
+//               } else {
+//                 console.log("Update transactions successful");
+//                 functions.logger.info("AUTO RETRY CREATE TRANSACTIONS | SUCCESSFUL");
+//                 await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, true);
+
+//                 response.status(200).send({
+//                   message:
+//                     "UPDATE TRANSACTIONS TO XERO ACCOUNTING SUCCESSFUL!\n\nReference data that you'd uploaded: \n\n" + JSON.stringify(compiledXeroJson),
+//                 });
+//               }
+//             }
+//             break;
+//           }
+
+//           case 403:
+//             console.log("xeroCreateBankTransactions | Unauthorized with organization. Need manual Authentication.");
+//             functions.logger.info("CREATE TRANSACTIONS | FAILED - APP IS UNAUTHORIZED, NEED MANUAL AUTH. LINK: \n" + NEW_FUNCTION_AUTH_URL);
+//             await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
+//             await sendNodeMail(db, {
+//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//               message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
+//               action: "Xero-Firebase service requires manual authentication to your Xero Organization after our recent update. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
+//             });
+
+//             response.status(403).send({
+//               error: "XERO-NEED-MANUAL-AUTH",
+//               message: "This app is not authorized to connect with your organization. Please manually authorize tihs app to connect with your Xero Organization here:\n" + NEW_FUNCTION_AUTH_URL,
+//               action: NEW_FUNCTION_AUTH_URL,
+//             });
+//             break;
+
+//           case 500:
+//             console.log("xeroCreateBankTransactions | Failed with internal catch error: " + error);
+//             functions.logger.error("xeroCreateBankTransactions | Failed with internal catch error: " + error);
+//             await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
+//             await sendNodeMail(db, {
+//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//               message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
+//               action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
+//             });
+
+
+//             response.status(500).send({
+//               error: "INTERNAL-SERVER-ERROR",
+//               message: error + "\n\nNOTE: Please contact your Firebase Cloud Functions Developer at wong.zhengxiang@gmail.com.",
+//             });
+
+//             break;
+
+//           default:
+//             console.log("xeroCreateBankTransactions | Failed with internal XERO error:\n" + body);
+//             functions.logger.error("xeroCreateBankTransactions | Failed with internal XERO error:\n" + body);
+//             await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
+//             await sendNodeMail(db, {
+//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//               message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
+//               action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
+//             });
+
+
+//             response.status(statusCode).send({
+//               error: "XERO-ERROR",
+//               message: "NOTE: An error has occured while calling the XERO API. Your request has been terminated. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com." + "\n\nRESPONSE BODY FROM XERO:\n\n" + body,
+//             });
+//         }
+
+
+//       } else {
+//         console.log("\nJWT VERIFY FAILED because payload ID mismatched\n");
+//         functions.logger.error("\nJWT VERIFY FAILED because payload ID mismatched\n");
+//         response.status(403).send({
+//           error: "MISMATCHED-PAYLOAD",
+//           message:
+//             "Your JSON Web Token decoded payload does not match with your request body. Request rejected",
+//         });
+//         return;
+//       }
+//     }
+//   });
+// });
 
