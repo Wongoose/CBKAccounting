@@ -444,57 +444,133 @@ export const sendInitMail = async (firestore: FirebaseFirestore.Firestore): Prom
 };
 
 // IN DEVELOPMENT
-export const sendWeeklyReportMail = async (firestore: FirebaseFirestore.Firestore) => {
-  const transporter = nodeMailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: gmailEmail,
-      pass: gmailPassword,
-    },
-  });
+export const sendWeeklyReportMail = async (firestore: FirebaseFirestore.Firestore, largestDate: string, smallestDate: string, numberOfTransactions: number): Promise<ReturnValue> => {
+  try {
+    console.log("HELPER.ts: sendWeeklyReportMail Function running...");
 
-  const mailOptions = {
-    from: "Support from CBKAccounting",
-    to: "wong.zhengxiang@gmail.com",
-    subject: "Weekly transactions report from Xero-Firebase Service",
-    text: "Here is a summary report for the ipay88 transactions in the past week.\n\nNumber of new transactions: 1\nStart date: (Friday)\nEnd date: (Friday)\n\nWe have recorded all the new ipay88 transactions in the past week and compiled it into the CSV File attached below. Please manually import the CSV File to your Xero Bank Account.",
-    attachments: [
-      {
-        filename: new Date().toISOString().split("T")[0] + "(ipay88).csv",
-        contentType: "text/csv",
-        content: fs.createReadStream("current_report.csv"),
+    const doc = await firestore.collection("CBKAccounting").doc("details").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) {
+      console.log("HELPER.ts: sendWeeklyReportMail | Failed");
+      const result: ReturnValue = { success: false, value: "Failed to read data from database", statusCode: 500 };
+      return result;
+    }
+
+    const adminEmail = dataMap["admin_email"];
+    const lastReportedDate = dataMap["last_reported_date"];
+    const UTC8MillisecondOffset = 8 * 60 * 60 * 1000;
+
+    let formattedLastReportedDate;
+
+    const currentDate = new Date(new Date().getTime() + UTC8MillisecondOffset).toISOString().split("T")[0];
+    const formattedcurrentDate = `${currentDate} (${new Date(currentDate).toString().split(" ")[0]})`;
+
+    if (lastReportedDate == null) {
+      formattedLastReportedDate = "(Start)";
+    } else {
+      formattedLastReportedDate = `${lastReportedDate} + (${new Date(lastReportedDate).toString().split(" ")[0]})`;
+    }
+
+    const transporter = nodeMailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: gmailEmail,
+        pass: gmailPassword,
       },
-    ],
-  };
+    });
 
-  await transporter.sendMail(mailOptions);
-  console.log("SENT EMAIL VIA NODEMAILER");
-  const result: ReturnValue = { success: true, value: "Successful send weekly report email" };
-  return result;
+    let emailBody: string;
+
+    if (numberOfTransactions == 0) {
+      emailBody = `Here is a weekly summary report of the new ipay88 transactions.\n\nThis session duration: ${formattedLastReportedDate} to ${formattedcurrentDate}\nNumber of new ipay88 transactions: ${numberOfTransactions}\n\nThere are no new ipay88 transactions since the last reporting date. Thank you for using our service!`;
+    } else {
+      emailBody = `Here is a weekly summary report of the new ipay88 transactions.\n\nThis session duration: ${formattedLastReportedDate} to ${formattedcurrentDate}\nNumber of new ipay88 transactions: ${numberOfTransactions}\nSession's most recent ipay88 transaction date: ${largestDate} (${new Date(largestDate).toString().split(" ")[0]})\n\nWe have recorded all the new ipay88 transactions since the last reporting session into the CSV File attached below. Please manually import the CSV File to your Xero Bank Account. Thank you for using our service!`;
+    }
+
+    const mailOptions = {
+      from: "Support from CBKAccounting",
+      to: adminEmail,
+      subject: "Weekly transactions report from Xero-Firebase Service",
+      text: emailBody,
+      attachments: [
+        {
+          filename: currentDate + "(ipay88).csv",
+          contentType: "text/csv",
+          content: fs.createReadStream("current_report.csv"),
+        },
+      ],
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log("SENT EMAIL VIA NODEMAILER");
+    await firestore.collection("CBKAccounting").doc("details").update({
+      "last_reported_date": currentDate,
+    });
+
+    const result: ReturnValue = { success: true, value: "Successful send weekly report email" };
+    return result;
+
+  } catch (error) {
+    console.log("HELPER.ts: sendWeeklyReportMail | FAILED with catch error: " + error);
+    const result: ReturnValue = { success: false, value: error as string };
+    return result;
+  }
 };
 
-export const getListOfNewTransactions = async (firestore: FirebaseFirestore.Firestore): Promise<Record<string, any>[]> => {
+type ReturnNewTransaction = {
+  largestDate?: string;
+  smallestDate?: string;
+  message?: string;
+  numberOfTransactions: number;
+  listOfNewTransactions: Record<string, any>[];
+}
+
+export const getListOfNewTransactions = async (firestore: FirebaseFirestore.Firestore): Promise<ReturnNewTransaction> => {
   try {
     console.log("getListofNewTransactions running...");
 
     const snapshot = await firestore.collection("transactionLogs").where("isEmailed", "==", false).get();
     const listOfNewTransactions: Record<string, any>[] = [];
     const listOfDocumentIds = [];
+    const numberOfTransactions = snapshot.docs.length;
+    let largestDateMillisecond: number;
+    let smallestDateMillisecond: number;
+    let largestDate: string | undefined = undefined;
+    let smallestDate: string | undefined = undefined;
 
     if (snapshot.docs.length == 0) {
       // no new transactions in Firebase transactionLogs
-      return [];
+      const result: ReturnNewTransaction = { numberOfTransactions, listOfNewTransactions: [] };
+      return result;
     }
 
     snapshot.docs.forEach((doc) => {
       const dataMap = doc.data();
 
-      const listOfDataData = (dataMap["transaction_date"] as string).split(" ")[0].split("-");
-      const year = listOfDataData[0];
-      const month = listOfDataData[1];
-      const day = listOfDataData[2];
+      const date = (dataMap["transaction_date"] as string).split(" ")[0];
+      const listOfDateData = date.split("-");
+      const year = listOfDateData[0];
+      const month = listOfDateData[1];
+      const day = listOfDateData[2];
 
       const formattedDate = `${day}/${month}/${year}`;
+
+      if (!largestDateMillisecond && !smallestDateMillisecond) {
+        largestDateMillisecond = Date.parse(date);
+        smallestDateMillisecond = Date.parse(date);
+        largestDate = new Date(largestDateMillisecond).toISOString().split("T")[0];
+        smallestDate = new Date(largestDateMillisecond).toISOString().split("T")[0];
+
+      } else {
+        if (Date.parse(date) > largestDateMillisecond) {
+          largestDateMillisecond = Date.parse(date);
+          largestDate = new Date(largestDateMillisecond).toISOString().split("T")[0];
+        } else if (Date.parse(date) < smallestDateMillisecond) {
+          smallestDateMillisecond = Date.parse(date);
+          smallestDate = new Date(largestDateMillisecond).toISOString().split("T")[0];
+        }
+      }
 
       const formattedJSON: Record<string, any> = {
         "*Date": formattedDate,
@@ -508,12 +584,13 @@ export const getListOfNewTransactions = async (firestore: FirebaseFirestore.Fire
       console.log("FORMATTED JSON:\n" + JSON.stringify(formattedJSON));
       listOfDocumentIds.push(doc.id);
       listOfNewTransactions.push(formattedJSON);
-
     });
 
-    return listOfNewTransactions;
+    const result: ReturnNewTransaction = { largestDate, smallestDate, numberOfTransactions, listOfNewTransactions };
+    return result;
   } catch (error) {
     console.log("getListofNewTransactions | FAILED with catch error: " + error);
-    return [];
+    const result: ReturnNewTransaction = { message: error as string, numberOfTransactions: -1, listOfNewTransactions: [] };
+    return result;
   }
 };

@@ -465,17 +465,26 @@ exports.sendInitEmail = functions.https.onRequest(async (request, response) => {
 // SEND WEEKLY REPORT EMAIL - IN DEVELOPMENT
 exports.sendWeeklyReportEmail = functions.https.onRequest(async (request, response) => {
   try {
-    const listOfNewTransactions = await getListOfNewTransactions(db);
+    const { largestDate, smallestDate, message, numberOfTransactions, listOfNewTransactions } = await getListOfNewTransactions(db);
+
+    if (numberOfTransactions == -1) {
+      // CATCH ERROR in function
+      console.log("sendWeeklyReportEmail | Failed: " + message);
+      functions.logger.error("sendWeeklyReportEmail | Failed: " + message);
+      response.status(500).send("Internal error has occured");
+    }
 
     converter.json2csv(listOfNewTransactions, async (err, csv) => {
       console.log("converter json2csv | STARTED");
       if (err) {
+        // Has error
         console.log("converter json2csv | FAILED: " + err);
         response.status(500).send("Failed to convert JSON to CSV: " + err);
         throw err;
       }
 
       if (!csv) {
+        // Empty csv content
         console.log("converter json2csv | csv file is empty");
         response.status(500).send("CSV String is empty: " + csv);
         return;
@@ -486,18 +495,26 @@ exports.sendWeeklyReportEmail = functions.https.onRequest(async (request, respon
       fs.writeFileSync("current_report.csv", csv);
       console.log("writeFileSync | SUCESSS");
 
-      const { success } = await sendWeeklyReportMail(db);
+      // CONTINUE WITH FIREBASE STORAGE
+
+      const { success, value } = await sendWeeklyReportMail(db, largestDate ?? "-", smallestDate ?? "-", numberOfTransactions);
+     
+      // DELETE TEMP FILE
+      
       if (success) {
-        console.log("sendWeeklyReportMail | SUCESSS");
+        console.log("HELPER.ts: sendWeeklyReportMail | SUCESSS");
+        // UPDATE TRANSACTION LOGS
         response.status(200).send("sendWeeklyReportEmail | SUCCESS");
       } else {
-        console.log("sendWeeklyReportMail | FAILED");
+        console.log("HELPER.ts: sendWeeklyReportMail | FAILED: " + value);
+        functions.logger.error("HELPER.ts: sendWeeklyReportMail | FAILED: " + value);
         response.status(500).send("sendWeeklyReportEmail | FAILED");
       }
     });
 
   } catch (error) {
     console.log("sendWeeklyReportEmail | FAILED with catch error: " + error);
+    functions.logger.error("sendWeeklyReportEmail | FAILED with catch error: " + error);
     response.status(500).send("sendWeeklyReportEmail | FAILED with catch error: " + error);
   }
 });
