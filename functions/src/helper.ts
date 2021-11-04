@@ -469,7 +469,7 @@ export const sendWeeklyReportMail = async (firestore: FirebaseFirestore.Firestor
     if (lastReportedDate == null) {
       formattedLastReportedDate = "(Start)";
     } else {
-      formattedLastReportedDate = `${lastReportedDate} + (${new Date(lastReportedDate).toString().split(" ")[0]})`;
+      formattedLastReportedDate = `${lastReportedDate} (${new Date(lastReportedDate).toString().split(" ")[0]})`;
     }
 
     const transporter = nodeMailer.createTransport({

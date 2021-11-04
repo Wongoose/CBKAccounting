@@ -498,9 +498,9 @@ exports.sendWeeklyReportEmail = functions.https.onRequest(async (request, respon
       // CONTINUE WITH FIREBASE STORAGE
 
       const { success, value } = await sendWeeklyReportMail(db, largestDate ?? "-", smallestDate ?? "-", numberOfTransactions);
-     
+
       // DELETE TEMP FILE
-      
+
       if (success) {
         console.log("HELPER.ts: sendWeeklyReportMail | SUCESSS");
         // UPDATE TRANSACTION LOGS
