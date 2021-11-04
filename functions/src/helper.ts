@@ -284,6 +284,7 @@ export const generateTransactionLog = async (firestore: FirebaseFirestore.Firest
 
 
     const getExistingLogSnap = await firestore.collection("transactionLogs").where("ip_transid", "==", transaction.ip_transid).get();
+
     if (getExistingLogSnap.docs.length == 0) {
       // no existing logs - create new
       console.log("Creating new log...");
@@ -297,6 +298,7 @@ export const generateTransactionLog = async (firestore: FirebaseFirestore.Firest
         await firestore.collection("transactionLogs").doc(addResult.id).update({
           "log_created": timestamp,
           "log_updated": timestamp,
+          "isEmailed": false,
         });
         const result: ReturnValue = { success: true, value: addResult.id };
         return result;
@@ -310,6 +312,7 @@ export const generateTransactionLog = async (firestore: FirebaseFirestore.Firest
       if (updateResult) {
         await firestore.collection("transactionLogs").doc(docID).update({
           "log_updated": timestamp,
+          "isEmailed": false,
         });
         const result: ReturnValue = { success: true, value: docID };
         return result;
@@ -397,7 +400,7 @@ export const sendNodeMail = async (firestore: FirebaseFirestore.Firestore, mailM
 
 };
 
-export const sendInitMail = async (firestore: FirebaseFirestore.Firestore) => {
+export const sendInitMail = async (firestore: FirebaseFirestore.Firestore): Promise<ReturnValue> => {
   try {
     console.log("INITMAIL running...");
 
@@ -406,7 +409,8 @@ export const sendInitMail = async (firestore: FirebaseFirestore.Firestore) => {
 
     if (dataMap === undefined) {
       console.log("sendNodeMail | Failed");
-      return;
+      const result: ReturnValue = { success: false, value: "Failed to read data from database", statusCode: 500 };
+      return result;
     }
 
     const adminEmail = dataMap["admin_email"];
@@ -428,10 +432,88 @@ export const sendInitMail = async (firestore: FirebaseFirestore.Firestore) => {
 
     await transporter.sendMail(mailOptions);
     console.log("SENT EMAIL VIA NODEMAILER");
-    return;
+    const result: ReturnValue = { success: true, value: "Successful send init email" };
+    return result;
+
   } catch (error) {
     console.log("FAILED TO SEND INITEMAIL with catch error: " + error);
-    return;
+    const result: ReturnValue = { success: false, value: "Failed: " + error };
+    return result;
 
+  }
+};
+
+// IN DEVELOPMENT
+export const sendWeeklyReportMail = async (firestore: FirebaseFirestore.Firestore) => {
+  const transporter = nodeMailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: gmailEmail,
+      pass: gmailPassword,
+    },
+  });
+
+  const mailOptions = {
+    from: "Support from CBKAccounting",
+    to: "wong.zhengxiang@gmail.com",
+    subject: "Weekly transactions report from Xero-Firebase Service",
+    text: "Here is a summary report for the ipay88 transactions in the past week.\n\nNumber of new transactions: 1\nStart date: (Friday)\nEnd date: (Friday)\n\nWe have recorded all the new ipay88 transactions in the past week and compiled it into the CSV File attached below. Please manually import the CSV File to your Xero Bank Account.",
+    attachments: [
+      {
+        filename: new Date().toISOString().split("T")[0] + "(ipay88).csv",
+        contentType: "text/csv",
+        content: fs.createReadStream("current_report.csv"),
+      },
+    ],
+  };
+
+  await transporter.sendMail(mailOptions);
+  console.log("SENT EMAIL VIA NODEMAILER");
+  const result: ReturnValue = { success: true, value: "Successful send weekly report email" };
+  return result;
+};
+
+export const getListOfNewTransactions = async (firestore: FirebaseFirestore.Firestore): Promise<Record<string, any>[]> => {
+  try {
+    console.log("getListofNewTransactions running...");
+
+    const snapshot = await firestore.collection("transactionLogs").where("isEmailed", "==", false).get();
+    const listOfNewTransactions: Record<string, any>[] = [];
+    const listOfDocumentIds = [];
+
+    if (snapshot.docs.length == 0) {
+      // no new transactions in Firebase transactionLogs
+      return [];
+    }
+
+    snapshot.docs.forEach((doc) => {
+      const dataMap = doc.data();
+
+      const listOfDataData = (dataMap["transaction_date"] as string).split(" ")[0].split("-");
+      const year = listOfDataData[0];
+      const month = listOfDataData[1];
+      const day = listOfDataData[2];
+
+      const formattedDate = `${day}/${month}/${year}`;
+
+      const formattedJSON: Record<string, any> = {
+        "*Date": formattedDate,
+        "*Amount": dataMap["ip_amount"],
+        "Payee": "IDK",
+        "Description": dataMap["remarks"] + " | " + dataMap["name"],
+        "Reference": "ipay88 Transaction ID: " + dataMap["ip_transid"],
+        "Transaction Type": "credit",
+      };
+
+      console.log("FORMATTED JSON:\n" + JSON.stringify(formattedJSON));
+      listOfDocumentIds.push(doc.id);
+      listOfNewTransactions.push(formattedJSON);
+
+    });
+
+    return listOfNewTransactions;
+  } catch (error) {
+    console.log("getListofNewTransactions | FAILED with catch error: " + error);
+    return [];
   }
 };
