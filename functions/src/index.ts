@@ -2,20 +2,25 @@ import * as functions from "firebase-functions";
 import base64 = require("base-64");
 import config from "./config/config";
 import admin = require("firebase-admin");
-import { generateFirebaseOTP, generateTransactionLog, getListOfNewTransactions, post, sendInitMail, sendWeeklyReportMail, xeroGetTenantConnections, XeroTransactionObject } from "./helper";
+import { generateFirebaseOTP, generateTransactionLog, getListOfNewTransactions, post, sendInitMail, sendWeeklyReportMail, weeklyReportSuccessUpdate, xeroGetTenantConnections, XeroTransactionObject } from "./helper";
 import jwt = require("jsonwebtoken");
 import converter = require("json-2-csv");
 
 // import { signInEmailWithLink } from "./auth";
 // import open = require("open");
 // import Busboy = require("busboy");
-// import os = require("os");
+import os = require("os");
 import fs = require("fs");
-// import path = require("path");
+const { v4: uuidv4 } = require("uuid");
+import path = require("path");
 
 
-admin.initializeApp();
+admin.initializeApp({
+  storageBucket: "cbkaccounting.appspot.com",
+});
 const db = admin.firestore();
+const storage = admin.storage();
+
 // const auth = admin.auth();
 const cbkAccountingCollection = db.collection("CBKAccounting");
 
@@ -465,7 +470,7 @@ exports.sendInitEmail = functions.https.onRequest(async (request, response) => {
 // SEND WEEKLY REPORT EMAIL - IN DEVELOPMENT
 exports.sendWeeklyReportEmail = functions.https.onRequest(async (request, response) => {
   try {
-    const { largestDate, smallestDate, message, numberOfTransactions, listOfNewTransactions } = await getListOfNewTransactions(db);
+    const { largestDate, smallestDate, message, numberOfTransactions, listOfNewTransactions, listOfDocumentIds } = await getListOfNewTransactions(db);
 
     if (numberOfTransactions == -1) {
       // CATCH ERROR in function
@@ -492,24 +497,59 @@ exports.sendWeeklyReportEmail = functions.https.onRequest(async (request, respon
 
       // print CSV string
       console.log("CONVERTED CSV FILE IS:\n" + csv);
-      fs.writeFileSync("current_report.csv", csv);
+      const tmpdir = os.tmpdir();
+      const filePath = path.join(tmpdir, "current_report.csv");
+      fs.writeFileSync(filePath, csv);
       console.log("writeFileSync | SUCESSS");
 
       // CONTINUE WITH FIREBASE STORAGE
+      console.log("\nFIREBASE STORAGE | UPLOADING...\n");
+      console.log("File path is: " + filePath);
 
-      const { success, value } = await sendWeeklyReportMail(db, largestDate ?? "-", smallestDate ?? "-", numberOfTransactions);
+      const uuid = uuidv4();
+      const UTC8MillisecondOffset = 8 * 60 * 60 * 1000;
+      const currentDate = new Date(new Date().getTime() + UTC8MillisecondOffset).toISOString().split("T")[0];
+
+      const destFileName = `${currentDate} (ipay88).csv`;
+
+      await storage.bucket().upload(filePath, {
+        destination: destFileName,
+        contentType: "application/vnd.ms-excel",
+        metadata: {
+          metadata: {
+            firebaseStorageDownloadTokens: uuid,
+          },
+        },
+      });
+
+      const downloadUrl =`https://firebasestorage.googleapis.com/v0/b/cbkaccounting.appspot.com/o/${encodeURIComponent(destFileName)}?alt=media&token=${uuid}`;
+
+      console.log("FIREBASE STORAGE | Upload success!");
+
+      const { success, value } = await sendWeeklyReportMail(db, largestDate ?? "-", smallestDate ?? "-", currentDate, numberOfTransactions, filePath);
 
       // DELETE TEMP FILE
+      fs.unlink(filePath, (err) => {
+        if (err) throw err;
+        console.log("File is deleted!");
+      });
 
       if (success) {
         console.log("HELPER.ts: sendWeeklyReportMail | SUCESSS");
         // UPDATE TRANSACTION LOGS
-        response.status(200).send("sendWeeklyReportEmail | SUCCESS");
+        const updateResult = await weeklyReportSuccessUpdate(db, listOfDocumentIds ?? [], destFileName, downloadUrl, admin.firestore.FieldValue.serverTimestamp());
+        if (updateResult) {
+          response.status(200).send("sendWeeklyReportEmail | SUCCESS");
+        } else {
+          response.status(500).send("sendWeeklyReportEmail | Failed function 'weeklyReportSuccessUpdate'. Cannot update transaction logs in Firebase after successful email.");
+        }
       } else {
         console.log("HELPER.ts: sendWeeklyReportMail | FAILED: " + value);
         functions.logger.error("HELPER.ts: sendWeeklyReportMail | FAILED: " + value);
         response.status(500).send("sendWeeklyReportEmail | FAILED");
       }
+
+
     });
 
   } catch (error) {
