@@ -13,6 +13,7 @@ import os = require("os");
 import fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 import path = require("path");
+import { getTransactionLogs } from "./helper_ui";
 
 
 admin.initializeApp({
@@ -467,7 +468,7 @@ exports.sendInitEmail = functions.https.onRequest(async (request, response) => {
   }
 });
 
-// SEND WEEKLY REPORT EMAIL - IN DEVELOPMENT
+// SEND WEEKLY REPORT EMAIL - DEPLOYED
 exports.sendWeeklyReportEmail = functions.https.onRequest(async (request, response) => {
   try {
     const { largestDate, smallestDate, message, numberOfTransactions, listOfNewTransactions, listOfDocumentIds } = await getListOfNewTransactions(db);
@@ -522,7 +523,7 @@ exports.sendWeeklyReportEmail = functions.https.onRequest(async (request, respon
         },
       });
 
-      const downloadUrl =`https://firebasestorage.googleapis.com/v0/b/cbkaccounting.appspot.com/o/${encodeURIComponent(destFileName)}?alt=media&token=${uuid}`;
+      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/cbkaccounting.appspot.com/o/${encodeURIComponent(destFileName)}?alt=media&token=${uuid}`;
 
       console.log("FIREBASE STORAGE | Upload success!");
 
@@ -559,6 +560,22 @@ exports.sendWeeklyReportEmail = functions.https.onRequest(async (request, respon
   }
 });
 
+exports.getTransactionLogs = functions.https.onRequest(async (request, response) => {
+  try {
+    const { success, value, statusCode } = await getTransactionLogs(db);
+
+    if (success) {
+      response.status(200).send(value);
+      return;
+    } else {
+      response.status(statusCode ?? 500).send(value);
+      return;
+    }
+  } catch (error) {
+    response.status(500).send(error);
+    return;
+  }
+});
 // LATEST FUNCTION
 // exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
 //   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST

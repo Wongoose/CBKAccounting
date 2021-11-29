@@ -299,6 +299,8 @@ export const generateTransactionLog = async (firestore: FirebaseFirestore.Firest
           "log_created": timestamp,
           "log_updated": timestamp,
           "isEmailed": false,
+          "isReconciled": false,
+          "listOfReconciledInvoiceIDs": [],
         });
         const result: ReturnValue = { success: true, value: addResult.id };
         return result;
@@ -312,7 +314,7 @@ export const generateTransactionLog = async (firestore: FirebaseFirestore.Firest
       if (updateResult) {
         await firestore.collection("transactionLogs").doc(docID).update({
           "log_updated": timestamp,
-          "isEmailed": false,
+          // "isEmailed": false,
         });
         const result: ReturnValue = { success: true, value: docID };
         return result;
@@ -447,6 +449,7 @@ export const sendInitMail = async (firestore: FirebaseFirestore.Firestore): Prom
 export const sendWeeklyReportMail = async (firestore: FirebaseFirestore.Firestore, largestDate: string, smallestDate: string, currentDate: string, numberOfTransactions: number, filePath: string): Promise<ReturnValue> => {
   try {
     console.log("HELPER.ts: sendWeeklyReportMail Function running...");
+
 
     const doc = await firestore.collection("CBKAccounting").doc("details").get();
     const dataMap = doc.data();
@@ -614,4 +617,13 @@ export const weeklyReportSuccessUpdate = async (firestore: FirebaseFirestore.Fir
     console.log("weeklyReportSuccessUpdate | FAILED with catch error: " + error);
     return false;
   }
+};
+
+export const convertFromFBTimestamp = (date: string) => {
+  const UTC8MillisecondOffset = 8 * 60 * 60 * 1000;
+
+  const milliseconds = Date.parse(date);
+  const ISODate = new Date(milliseconds + UTC8MillisecondOffset).toISOString();
+  const formattedDate = ISODate.replace("T", " ").split(".")[0];
+  return formattedDate;
 };
