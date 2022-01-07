@@ -13,6 +13,7 @@ const { client_id, client_secret, gmailEmail, gmailPassword } = config;
 const XERO_BANK_TRANSACTIONS_URL = "https://api.xero.com/api.xro/2.0/BankTransactions";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_TENANT_CONNECTIONS_URL = "https://api.xero.com/connections";
+const XERO_INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices";
 
 export const post = promisify(nodeRequest.post);
 export const get = promisify(nodeRequest.get);
@@ -166,6 +167,52 @@ export const xeroGetTenantConnections = async (
     }
   } catch (error) {
     return false;
+  }
+};
+
+// RAW LIST - NEXT CREATE FILTER AND ORDERBY
+export const xeroGetListOfInvoices = async (
+  firestore: FirebaseFirestore.Firestore
+): Promise<ReturnValue> => {
+  try {
+    console.log("\nSTART OF xeroGetListOfInvoices:\n");
+
+    const doc = await firestore.collection("CBKAccounting").doc("tokens").get();
+    const dataMap = doc.data();
+
+    if (dataMap === undefined) {
+      const result: ReturnValue = { success: false, value: "INTERNAL SERVER ERROR: Cannot read database.", statusCode: 500 };
+      return result;
+    }
+
+    const accessToken = dataMap["access_token"];
+    const xeroTenantId = dataMap["xero-tenant-id"];
+
+    const { statusCode, body } = await get({
+      url: XERO_INVOICES_URL,
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`,
+        "xero-tenant-id": xeroTenantId,
+      },
+    });
+
+    console.log("xeroGetListOfInvoices | statusCode:", statusCode);
+    console.log("xeroGetListOfInvoices | body length:", JSON.parse(body).Invoices.length);
+
+    if (statusCode === 200) {
+      const listOfInvoices: Record<string, string> = JSON.parse(body);
+      console.log("xeroGetListOfInvoices | List of invoices success");
+      const result: ReturnValue = { success: true, value: listOfInvoices };
+      return result;
+    } else {
+      const result: ReturnValue = { success: false, value: "ERROR" };
+      return result;
+    }
+  } catch (error) {
+    const result: ReturnValue = { success: false, value: "ERROR" };
+    return result;
   }
 };
 

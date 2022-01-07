@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import base64 = require("base-64");
 import config from "./config/config";
 import admin = require("firebase-admin");
-import { generateFirebaseOTP, generateTransactionLog, getListOfNewTransactions, post, sendInitMail, sendWeeklyReportMail, weeklyReportSuccessUpdate, xeroGetTenantConnections, XeroTransactionObject } from "./helper";
+import { generateFirebaseOTP, generateTransactionLog, getListOfNewTransactions, post, sendInitMail, sendWeeklyReportMail, weeklyReportSuccessUpdate, xeroGetListOfInvoices, xeroGetTenantConnections, XeroTransactionObject } from "./helper";
 import jwt = require("jsonwebtoken");
 import converter = require("json-2-csv");
 
@@ -14,6 +14,7 @@ import fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 import path = require("path");
 import { getTransactionLogs } from "./helper_ui";
+// import { firestore } from "firebase-admin";
 
 
 admin.initializeApp({
@@ -94,6 +95,18 @@ exports.xeroManualAuth = functions.https.onRequest(async (request, response) => 
 
 });
 
+// XERO GET LIST OF INVOICES
+exports.xeroGetListOfInvoices = functions.https.onRequest(async (request, response) => {
+  console.log("\nSTART OF xeroGetListOfInvoices\n");
+  const { success, value } = await xeroGetListOfInvoices(db,);
+
+  if (success) {
+    response.status(200).send(value);
+  } else {
+    response.status(500).send(value);
+  }
+});
+
 // REDIRECTED FROM XERO MANUAL AUTH
 exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) => {
 
@@ -152,7 +165,7 @@ exports.xeroRedirectUrl = functions.https.onRequest(async (request, response) =>
   }
 });
 
-// MAIN BODY FUNCTION - CALLED BY WEBHOOK
+// MAIN BODY FUNCTION - CALLED BY WEBHOOK (NO NEED TO CONNECT TO XERO)
 exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
 
@@ -564,14 +577,18 @@ exports.getTransactionLogs = functions.https.onRequest(async (request, response)
   try {
     const { success, value, statusCode } = await getTransactionLogs(db);
 
+
     if (success) {
+      response.setHeader("Access-Control-Allow-Origin", "*");
       response.status(200).send(value);
       return;
     } else {
+      response.setHeader("Access-Control-Allow-Origin", "*");
       response.status(statusCode ?? 500).send(value);
       return;
     }
   } catch (error) {
+    response.setHeader("Access-Control-Allow-Origin", "*");
     response.status(500).send(error);
     return;
   }

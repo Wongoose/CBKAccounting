@@ -28,13 +28,13 @@ export const getTransactionLogs = async (firestore: FirebaseFirestore.Firestore)
                 if ((dataMap["log_error"] as string).length == 0) {
                     // no log error
                     if (dataMap["isReconciled"]) {
-                        finalStatus = "reconciled";
+                        finalStatus = "Reconciled";
                     } else {
-                        finalStatus = "not reconciled";
+                        finalStatus = "Not reconciled";
                     }
                 } else {
                     // has log error
-                    finalStatus = "error";
+                    finalStatus = "Error";
                 }
 
                 dataMap["final_status"] = finalStatus;
