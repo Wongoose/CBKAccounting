@@ -172,7 +172,7 @@ export const xeroGetTenantConnections = async (
 
 // RAW LIST - NEXT CREATE FILTER AND ORDERBY
 export const xeroGetListOfInvoices = async (
-  firestore: FirebaseFirestore.Firestore
+  firestore: FirebaseFirestore.Firestore, pageNumber: string, orderDate: string,
 ): Promise<ReturnValue> => {
   try {
     console.log("\nSTART OF xeroGetListOfInvoices:\n");
@@ -189,7 +189,7 @@ export const xeroGetListOfInvoices = async (
     const xeroTenantId = dataMap["xero-tenant-id"];
 
     const { statusCode, body } = await get({
-      url: XERO_INVOICES_URL,
+      url: `${XERO_INVOICES_URL}?page=${pageNumber}&order=Date%20${orderDate}`,
       method: "GET",
       headers: {
         "Content-Type": "application/json",
