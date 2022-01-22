@@ -121,8 +121,10 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
     const pageNumber = request.query["page"] as string;
     // ASC or DESC
     const orderDate = request.query["orderDate"] as string;
+    // John Doe
+    const searchName = request.query["searchName"] as string;
 
-    const { success, value } = await xeroGetListOfInvoices(db, pageNumber ?? "1", orderDate ?? "DESC");
+    const { success, value } = await xeroGetListOfInvoices(db, pageNumber ?? "1", orderDate ?? "DESC", searchName);
 
     if (success) {
       response.status(200).send(value);
