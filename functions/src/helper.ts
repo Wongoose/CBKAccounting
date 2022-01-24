@@ -72,8 +72,9 @@ throw Error("Access Token or Xero Tenant ID not found");
     const xeroTenantId = dataMap["xero-tenant-id"];
 
     const requestBody = { bankTransactions: transactions };
+
     const { statusCode, body } = await post({
-      url: XERO_BANK_TRANSACTIONS_URL,
+      url: XERO_BANK_TRANSACTIONS_URL,  
       method: "POST",
       headers: {
         "Content-Type": "application/json",

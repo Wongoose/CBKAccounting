@@ -127,8 +127,10 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
     const { success, value } = await xeroGetListOfInvoices(db, pageNumber ?? "1", orderDate ?? "DESC", searchName);
 
     if (success) {
+      response.setHeader("Access-Control-Allow-Origin", "*");
       response.status(200).send(value);
     } else {
+      response.setHeader("Access-Control-Allow-Origin", "*");
       response.status(500).send(value);
     }
   }
