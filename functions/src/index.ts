@@ -8,10 +8,12 @@ import {
   getListOfNewTransactions,
   post,
   sendInitMail,
+  sendNodeMail,
   sendWeeklyReportMail,
   weeklyReportSuccessUpdate,
   xeroGetListOfInvoices,
   xeroGetTenantConnections,
+  xeroRefreshAccessToken,
   XeroTransactionObject,
 } from "./helper";
 import jwt = require("jsonwebtoken");
@@ -81,8 +83,8 @@ exports.xeroManualAuth = functions.https.onRequest(
     const dataMap = doc.data();
 
     if (dataMap === undefined) {
-throw Error("Access Token or Xero Tenant ID not found");
-}
+      throw Error("Access Token or Xero Tenant ID not found");
+    }
 
     const firebaseOTP = dataMap["otp"];
 
@@ -124,15 +126,205 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
     // John Doe
     const searchName = request.query["searchName"] as string;
 
-    const { success, value } = await xeroGetListOfInvoices(db, pageNumber ?? "1", orderDate ?? "DESC", searchName);
+    const resultOTP = await generateFirebaseOTP(db);
 
-    if (success) {
-      response.setHeader("Access-Control-Allow-Origin", "*");
-      response.status(200).send(value);
-    } else {
-      response.setHeader("Access-Control-Allow-Origin", "*");
-      response.status(500).send(value);
+    const NEW_FUNCTION_AUTH_URL = FUNCTION_AUTH_URL + "?code=" + resultOTP;
+
+    const { value, statusCode } = await xeroGetListOfInvoices(
+      db,
+      pageNumber ?? "1",
+      orderDate ?? "ASC",
+      searchName
+    );
+
+    // if (success) {
+    //   response.setHeader("Access-Control-Allow-Origin", "*");
+    //   response.status(200).send(value);
+    // } else {
+    //   response.setHeader("Access-Control-Allow-Origin", "*");
+    //   response.status(500).send(value);
+    // }
+    response.setHeader("Access-Control-Allow-Origin", "*");
+
+    switch (statusCode) {
+      case 200:
+        console.log("Get Invoices successful");
+        functions.logger.info("Get Invoices SUCCESSFUL");
+        response.status(200).send(value);
+        break;
+
+      case 401: {
+        const refreshSuccess = await xeroRefreshAccessToken(db);
+        if (!refreshSuccess) {
+          console.log("xeroRefreshAccessToken | Failed");
+          functions.logger.info(
+            "AUTO REFRESH | FAILED - NO ACTION WAS PERFORMED TO XERO"
+          );
+          await sendNodeMail(db, {
+            title:
+              "ALERT: Failed to connect to your Xero Accounting Organization from <Chumbaka Xero iPay88 Portal>",
+            message:
+              "You received this email because <Chumbaka Xero iPay88 Portal> has failed to connect to your Xero Organization.",
+            action:
+              "Your access to our service may have expired. You will need to re-authorize this service to your Xero Organization after 60 days of inactivity. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " +
+              NEW_FUNCTION_AUTH_URL,
+          });
+
+          response.status(401).send({
+            error: "XERO-FAIL-REFRESH",
+            messsage:
+              "Failed to auto-refresh xero access token. Function terminated.",
+          });
+        } else {
+          const retryResult = await xeroGetListOfInvoices(
+            db,
+            pageNumber ?? "1",
+            orderDate ?? "ASC",
+            searchName
+          );
+          const retryStatusCode = retryResult.statusCode;
+          const retryBody = retryResult.value;
+
+          if (retryStatusCode !== 200) {
+            console.log(
+              "Retry xeroGetListOfInvoices | Failed with statusCode " +
+                retryStatusCode
+            );
+            if (retryStatusCode === 403) {
+              functions.logger.info(
+                "AUTO RETRY GET INVOICES | FAILED - APP IS UNAUTHORIZED, NEED MANUAL AUTH. LINK: \n" +
+                  NEW_FUNCTION_AUTH_URL
+              );
+
+              await sendNodeMail(db, {
+                title:
+                  "ALERT: Failed to connect to your Xero Accounting Organization from <Chumbaka Xero iPay88 Portal>",
+                message:
+                  "You received this email because <Chumbaka Xero iPay88 Portal> has failed to connect to your Xero Organization.",
+                action:
+                  "<Chumbaka Xero iPay88 Portal> requires manual authentication to your Xero Organization after our recent update. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " +
+                  NEW_FUNCTION_AUTH_URL,
+              });
+
+              response.status(403).send({
+                error: "XERO-NEED-MANUAL-AUTH",
+                message:
+                  "This app is not authorized to connect with your organization. Please manually authorize this app to connect with your Xero Organization here:\n" +
+                  NEW_FUNCTION_AUTH_URL,
+              });
+            } else {
+              functions.logger.error(
+                "AUTO RETRY GET INVOICES | UNKOWN ERROR - NO ACTION WAS PERFORMED TO XERO API"
+              );
+              functions.logger.error(
+                "Status code: " + retryStatusCode + "\nBody: " + retryBody
+              );
+
+              await sendNodeMail(db, {
+                title:
+                  "ALERT: Failed to connect to your Xero Accounting Organization from <Chumbaka Xero iPay88 Portal>",
+                message:
+                  "You received this email because <Chumbaka Xero iPay88 Portal> has failed to connect to your Xero Organization.",
+                action:
+                  "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
+              });
+
+              response.status(500).send({
+                error: "INTERNAL-SERVER-ERROR",
+                message: "Failed to retry creating getting invoices in Xero.",
+              });
+            }
+          } else {
+            console.log("Get invoices successful");
+            functions.logger.info("AUTO RETRY GET INVOICES | SUCCESSFUL");
+            response.status(200).send(retryBody);
+          }
+        }
+        break;
+      }
+
+      case 403:
+        console.log(
+          "xeroGetListOfInvoices | Unauthorized with organization. Need manual Authentication."
+        );
+        functions.logger.info(
+          "GET INVOICES | FAILED - APP IS UNAUTHORIZED, NEED MANUAL AUTH. LINK: \n" +
+            NEW_FUNCTION_AUTH_URL
+        );
+
+        await sendNodeMail(db, {
+          title:
+            "ALERT: Failed to connect to your Xero Accounting Organization from <Chumbaka Xero iPay88 Portal>",
+          message:
+            "You received this email because <Chumbaka Xero iPay88 Portal> has failed to connect to your Xero Organization.",
+          action:
+            "<Chumbaka Xero iPay88 Portal> requires manual authentication to your Xero Organization after our recent update. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " +
+            NEW_FUNCTION_AUTH_URL,
+        });
+
+        response.status(403).send({
+          error: "XERO-NEED-MANUAL-AUTH",
+          message:
+            "This app is not authorized to connect with your organization. Please manually authorize tihs app to connect with your Xero Organization here:\n" +
+            NEW_FUNCTION_AUTH_URL,
+          action: NEW_FUNCTION_AUTH_URL,
+        });
+        break;
+
+      case 500:
+        functions.logger.error(
+          "xeroGetListOfInvoices | Failed with internal catch error"
+        );
+
+        await sendNodeMail(db, {
+          title:
+            "ALERT: Failed to connect to your Xero Accounting Organization from <Chumbaka Xero iPay88 Portal>",
+          message:
+            "You received this email because <Chumbaka Xero iPay88 Portal> has failed to connect to your Xero Organization.",
+          action:
+            "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
+        });
+
+        response.status(500).send({
+          error: "INTERNAL-SERVER-ERROR",
+          value,
+          message:
+            "NOTE: Please contact your Firebase Cloud Functions Developer at wong.zhengxiang@gmail.com.",
+        });
+
+        break;
+
+      default:
+        console.log(
+          "xeroGetListOfInvoices | Failed with internal XERO error:\n" + value
+        );
+        functions.logger.error(
+          "xeroGetListOfInvoices | Failed with internal XERO error:\n" + value
+        );
+
+        await sendNodeMail(db, {
+          title:
+            "ALERT: Failed to connect to your Xero Accounting Organization from <Chumbaka Xero iPay88 Portal>",
+          message:
+            "You received this email because <Chumbaka Xero iPay88 Portal> has failed to connect to your Xero Organization.",
+          action:
+            "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
+        });
+
+        response.status(statusCode ?? 500).send({
+          error: "XERO-ERROR",
+          message:
+            "NOTE: An error has occured while calling the XERO API. Your request has been terminated. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com." +
+            "\n\nRESPONSE BODY FROM XERO:\n\n" +
+            value,
+        });
     }
+  }
+);
+
+exports.authenticateFirebaseUser = functions.https.onRequest(
+  async (request, response) => {
+    // get details from HEADER
   }
 );
 
@@ -406,7 +598,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
           //       functions.logger.info("AUTO REFRESH | FAILED - NO ACTION WAS PERFORMED TO XERO");
           //       await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "XERO-FAIL-REFRESH");
           //       await sendNodeMail(db, {
-          //         title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+          //         title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
           //         message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
           //         action: "Your access to our service may have expired. You will need to re-authorize this service to your Xero Organization after 60 days of inactivity. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
           //       });
@@ -428,7 +620,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
 
           //           await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "XERO-NEED-MANUAL-AUTH");
           //           await sendNodeMail(db, {
-          //             title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+          //             title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
           //             message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
           //             action: "Xero-Firebase service requires manual authentication to your Xero Organization after our recent update. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
           //           });
@@ -443,7 +635,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
           //           functions.logger.error("Status code: " + retryStatusCode + "\nError: " + retryError + "\nBody: " + retryBody);
           //           await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "INTERNAL-SERVER-ERROR");
           //           await sendNodeMail(db, {
-          //             title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+          //             title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
           //             message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
           //             action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
           //           });
@@ -472,7 +664,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
           //     functions.logger.info("CREATE TRANSACTIONS | FAILED - APP IS UNAUTHORIZED, NEED MANUAL AUTH. LINK: \n" + NEW_FUNCTION_AUTH_URL);
           //     await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
           //     await sendNodeMail(db, {
-          //       title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+          //       title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
           //       message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
           //       action: "Xero-Firebase service requires manual authentication to your Xero Organization after our recent update. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
           //     });
@@ -489,7 +681,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
           //     functions.logger.error("xeroCreateBankTransactions | Failed with internal catch error: " + error);
           //     await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
           //     await sendNodeMail(db, {
-          //       title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+          //       title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
           //       message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
           //       action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
           //     });
@@ -506,7 +698,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
           //     functions.logger.error("xeroCreateBankTransactions | Failed with internal XERO error:\n" + body);
           //     await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
           //     await sendNodeMail(db, {
-          //       title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+          //       title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
           //       message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
           //       action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
           //     });
@@ -691,6 +883,49 @@ exports.getTransactionLogs = functions.https.onRequest(
     }
   }
 );
+
+// USED FOR TESTING ONLY
+  exports.xeroRefreshToken = functions.https.onRequest(async (request, response) => {
+    console.log("\nCLOUD FUNCTION START OF xeroRefreshToken:\n");
+
+    console.log("xeroinputMain | RAN from request IP: " + request.ips[0]);
+
+    // const { success, value, statusCode } = await validateBearerAuthToken(request, db);
+
+    // if (!success) {
+    //   console.log(value);
+    //   response.status(statusCode ?? 403).send(value?.toString());
+    //   return;
+    // }
+
+    // const resultIP: ReturnValue = await validateIpAddress(request.ips[0], db);
+
+    // if (!resultIP.success) {
+    //   console.log(resultIP.value);
+    //   response.status(resultIP.statusCode ?? 403).send(resultIP.value?.toString());
+    //   return;
+    // }
+
+    // console.log("xeroinputMain | RAN from request headers x-forwarded-for: " + request.headers["x-forwarded-for"]);
+    // console.log("xeroinputMain | RAN from request socket.remoteAddress: " + request.socket.remoteAddress);
+    // console.log("xeroinputMain | RAN from request X-Forwarded-For: " + request.headers["X-Forwared-For"]);
+    // console.log("xeroinputMain | RAN from request connection: " + request.headers.connection);
+    // console.log("xeroinputMain | RAN from request IP: " + request.ip);
+    // console.log("xeroinputMain | RAN from request Origin: " + request.headers.origin);
+    // console.log("xeroinputMain | RAN from request IPs: " + request.ips);
+
+    const refreshSuccess = await xeroRefreshAccessToken(db);
+
+    if (refreshSuccess) {
+      console.log("Cloud Function xeroRefreshToken | Success");
+      response.status(200).send("Access Token and Refresh Token updated successful.");
+    } else {
+      console.log("Cloud Function xeroRefreshToken | Failed");
+      response.status(500).send("Failed to update Access Token and Refresh Token, please try again.");
+    }
+
+  });
+
 // LATEST FUNCTION
 // exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
 //   // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
@@ -830,7 +1065,7 @@ exports.getTransactionLogs = functions.https.onRequest(
 //               functions.logger.info("AUTO REFRESH | FAILED - NO ACTION WAS PERFORMED TO XERO");
 //               await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "XERO-FAIL-REFRESH");
 //               await sendNodeMail(db, {
-//                 title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//                 title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
 //                 message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
 //                 action: "Your access to our service may have expired. You will need to re-authorize this service to your Xero Organization after 60 days of inactivity. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
 //               });
@@ -852,7 +1087,7 @@ exports.getTransactionLogs = functions.https.onRequest(
 
 //                   await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "XERO-NEED-MANUAL-AUTH");
 //                   await sendNodeMail(db, {
-//                     title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//                     title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
 //                     message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
 //                     action: "Xero-Firebase service requires manual authentication to your Xero Organization after our recent update. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
 //                   });
@@ -867,7 +1102,7 @@ exports.getTransactionLogs = functions.https.onRequest(
 //                   functions.logger.error("Status code: " + retryStatusCode + "\nError: " + retryError + "\nBody: " + retryBody);
 //                   await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false, "INTERNAL-SERVER-ERROR");
 //                   await sendNodeMail(db, {
-//                     title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//                     title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
 //                     message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
 //                     action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
 //                   });
@@ -896,7 +1131,7 @@ exports.getTransactionLogs = functions.https.onRequest(
 //             functions.logger.info("CREATE TRANSACTIONS | FAILED - APP IS UNAUTHORIZED, NEED MANUAL AUTH. LINK: \n" + NEW_FUNCTION_AUTH_URL);
 //             await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
 //             await sendNodeMail(db, {
-//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
 //               message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
 //               action: "Xero-Firebase service requires manual authentication to your Xero Organization after our recent update. Please follow the steps in this link to authorize Xero-Firebase service to your Xero Organization: " + NEW_FUNCTION_AUTH_URL,
 //             });
@@ -913,7 +1148,7 @@ exports.getTransactionLogs = functions.https.onRequest(
 //             functions.logger.error("xeroCreateBankTransactions | Failed with internal catch error: " + error);
 //             await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
 //             await sendNodeMail(db, {
-//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
 //               message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
 //               action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
 //             });
@@ -930,7 +1165,7 @@ exports.getTransactionLogs = functions.https.onRequest(
 //             functions.logger.error("xeroCreateBankTransactions | Failed with internal XERO error:\n" + body);
 //             await generateTransactionLog(db, admin.firestore.FieldValue.serverTimestamp(), transaction, false);
 //             await sendNodeMail(db, {
-//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Xero-Firebase-Service>",
+//               title: "ALERT: Failed to create bank transaction line in your Xero Organization from <Chumbaka Xero iPay88 Portal>",
 //               message: "ID: " + transaction.id + "\niPay88 Transaction ID: " + transaction.ip_transid + "\n\nYou received this email because a transaction line has failed to be created in your Xero bank account.",
 //               action: "We have identified an issue on our end. Please contact your Firebase Cloud Functions developer at wong.zhengxiang@gmail.com.",
 //             });

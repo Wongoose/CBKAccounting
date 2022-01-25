@@ -65,8 +65,8 @@ export const xeroCreateBankTransaction = async (
     const dataMap = doc.data();
 
     if (dataMap === undefined) {
-throw Error("Access Token or Xero Tenant ID not found");
-}
+      throw Error("Access Token or Xero Tenant ID not found");
+    }
 
     const accessToken = dataMap["access_token"];
     const xeroTenantId = dataMap["xero-tenant-id"];
@@ -74,7 +74,7 @@ throw Error("Access Token or Xero Tenant ID not found");
     const requestBody = { bankTransactions: transactions };
 
     const { statusCode, body } = await post({
-      url: XERO_BANK_TRANSACTIONS_URL,  
+      url: XERO_BANK_TRANSACTIONS_URL,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -106,8 +106,8 @@ export const xeroRefreshAccessToken = async (
     const dataMap = doc.data();
 
     if (dataMap === undefined) {
-throw Error("Access Token or Refresh Token not found");
-}
+      throw Error("Access Token or Refresh Token not found");
+    }
 
     const accessToken = dataMap["access_token"];
     const refreshToken = dataMap["refresh_token"];
@@ -206,9 +206,10 @@ export const xeroGetListOfInvoices = async (
     const xeroTenantId = dataMap["xero-tenant-id"];
 
     // FORMATTING THE URL
-    const formatUrl:URL = new URL(XERO_INVOICES_URL);
+    const formatUrl: URL = new URL(XERO_INVOICES_URL);
     formatUrl.searchParams.append("page", pageNumber);
     formatUrl.searchParams.append("order", `Date ${orderDate}`);
+
     if (searchName) {
       formatUrl.searchParams.append("where", `Contact.Name=="${searchName}"`);
     }
@@ -225,22 +226,31 @@ export const xeroGetListOfInvoices = async (
     });
 
     console.log("xeroGetListOfInvoices | statusCode:", statusCode);
-    console.log(
-      "xeroGetListOfInvoices | body length:",
-      JSON.parse(body).Invoices.length
-    );
+    console.log("xeroGetListOfInvoices | body length:", JSON.parse(body));
 
     if (statusCode === 200) {
       const listOfInvoices: Record<string, string> = JSON.parse(body).Invoices;
       console.log("xeroGetListOfInvoices | List of invoices success");
-      const result: ReturnValue = { success: true, value: listOfInvoices };
+      const result: ReturnValue = {
+        success: true,
+        value: listOfInvoices,
+        statusCode,
+      };
       return result;
     } else {
-      const result: ReturnValue = { success: false, value: "ERROR" };
+      const result: ReturnValue = {
+        success: false,
+        value: JSON.parse(body),
+        statusCode: statusCode ?? body.Status,
+      };
       return result;
     }
   } catch (error) {
-    const result: ReturnValue = { success: false, value: "ERROR" };
+    const result: ReturnValue = {
+      success: false,
+      value: `Catch error: ${error}`,
+      statusCode: 500,
+    };
     return result;
   }
 };
@@ -535,6 +545,11 @@ export const sendNodeMail = async (
     }
 
     const adminEmail = dataMap["admin_email"];
+    const emailEnabled = dataMap["email_enabled"];
+
+    if (!emailEnabled) {
+      return;
+    }
 
     const transporter = nodeMailer.createTransport({
       service: "gmail",
@@ -549,10 +564,7 @@ export const sendNodeMail = async (
       to: adminEmail,
       subject: mailMap.title,
       text:
-        "FAILED TRANSACTION DETAILS:\n" +
-        mailMap.message +
-        "\n\nFIX:\n" +
-        mailMap.action,
+        "FWhat happened?\n" + mailMap.message + "\n\nFIX:\n" + mailMap.action,
     };
 
     await transporter.sendMail(mailOptions);

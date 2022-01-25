@@ -5,7 +5,8 @@ export const getTransactionLogs = async (firestore: FirebaseFirestore.Firestore)
 
         console.log("HELPER.ts: getTransactionLogs Function running...");
 
-        const snapshot = await firestore.collection("transactionLogs").orderBy("log_updated", "asc").get();
+        const snapshot = await firestore.collection("transactionLogs").orderBy("transaction_date", "asc").get();
+        // const snapshot = await firestore.collection("transactionLogs").orderBy("log_updated", "desc").get();
         const transactionLogs: any[] = [];
 
         if (snapshot.docs.length != 0) {
