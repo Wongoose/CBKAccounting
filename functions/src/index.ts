@@ -2,6 +2,8 @@ import * as functions from "firebase-functions";
 import base64 = require("base-64");
 import config from "./config/config";
 import admin = require("firebase-admin");
+import bodyParser = require("body-parser");
+bodyParser;
 import {
   generateFirebaseOTP,
   generateTransactionLog,
@@ -328,9 +330,34 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
 exports.xeroReconcilePayment = functions.https.onRequest(
   async (request, response) => {
     // get details from HEADER
+    response.setHeader(
+      "Access-Control-Allow-Headers",
+      "append,delete,entries,foreach,get,has,keys,set,values,content-type,Authorization"
+    );
+    console.log(`Request headers origin is: ${request.headers.origin}`);
+    if (
+      request.headers.origin == "https://cbkreconciliation.web.app" ||
+      request.headers.origin == "http://127.0.0.1:5500"
+    ) {
+      response.setHeader("Access-Control-Allow-Origin", request.headers.origin);
+    }
+    response.setHeader(
+      "Access-Control-Allow-Methods",
+      "POST, GET, PUT, OPTIONS"
+    );
 
-    const invoiceDetails: Record<string, string> = request.body.invoiceDetails;
-    const paymentDetails: Record<string, string> = request.body.paymentDetails;
+    const jsonBody = JSON.parse(request.body);
+
+    const invoiceDetails = jsonBody.invoiceDetails;
+    const paymentDetails = jsonBody.paymentDetails;
+    console.log("\nbody invoiceDetails: " + invoiceDetails);
+    console.log("\nbody paymentDetails: " + paymentDetails);
+
+    if (invoiceDetails === undefined || paymentDetails === undefined) {
+      console.log("request body details are undefined");
+      response.status(500).send();
+      return;
+    }
 
     const { success, value, statusCode } = await xeroReconcilePayment(
       db,
@@ -338,13 +365,18 @@ exports.xeroReconcilePayment = functions.https.onRequest(
       paymentDetails
     );
 
+    console.log("Status code after function: " + statusCode);
+
+    // const success = true;
+    // const value = "test";
+    // const statusCode = 200;
+
     if (success) {
-      response.setHeader("Access-Control-Allow-Origin", "*");
       response.status(200).send(value);
       return;
     } else {
-      response.setHeader("Access-Control-Allow-Origin", "*");
       response.status(statusCode ?? 500).send(value);
+      // response.status(200).send(value);
       return;
     }
   }
@@ -372,7 +404,7 @@ exports.xeroRedirectUrl = functions.https.onRequest(
         url: url,
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "Authorization":
+          Authorization:
             "Basic " +
             base64.encode(`${params.client_id}:${params.client_secret}`),
         },

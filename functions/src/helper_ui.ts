@@ -121,7 +121,7 @@ export const xeroGetListOfInvoices = async (
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        "Authorization": `Bearer ${accessToken}`,
         "xero-tenant-id": xeroTenantId,
       },
     });
@@ -192,15 +192,13 @@ export const xeroReconcilePayment = async (
       IsReconciled: true,
     };
 
-    console.log("requestBody is: " + JSON.stringify(requestBody));
-
     const { statusCode, body } = await put({
       url: XERO_PAYMENTS_URL,
       // url: `${XERO_INVOICES_URL}?page=${pageNumber}&order=Date%20${orderDate}`,
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        "Authorization": `Bearer ${accessToken}`,
         "xero-tenant-id": xeroTenantId,
       },
       body: JSON.stringify(requestBody),
@@ -239,6 +237,7 @@ export const xeroReconcilePayment = async (
       return result;
     }
   } catch (err) {
+    console.log(`xeroReconcilePayment | FAILED with catch error: ${err}`);
     const result: ReturnValue = {
       success: false,
       value: {
