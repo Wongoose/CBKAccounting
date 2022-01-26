@@ -51,6 +51,7 @@ export type ReturnValue = {
   success: boolean;
   value: string | jwt.JwtPayload | undefined;
   statusCode?: number;
+  error?: string | jwt.JwtPayload | undefined;
 };
 
 export const xeroCreateBankTransaction = async (

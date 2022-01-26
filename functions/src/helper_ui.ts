@@ -9,16 +9,26 @@ const XERO_INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices";
 const XERO_PAYMENTS_URL = "https://api.xero.com/api.xro/2.0/Payments";
 
 export const getTransactionLogs = async (
-  firestore: FirebaseFirestore.Firestore
+  firestore: FirebaseFirestore.Firestore,
+  showReconciled: boolean
 ): Promise<ReturnValue> => {
   try {
     console.log("HELPER.ts: getTransactionLogs Function running...");
 
-    const snapshot = await firestore
-      .collection("transactionLogs")
-      .orderBy("log_created", "desc")
-      .get();
-    // const snapshot = await firestore.collection("transactionLogs").orderBy("log_updated", "desc").get();
+    let snapshot;
+    if (showReconciled) {
+      snapshot = await firestore
+        .collection("transactionLogs")
+        .orderBy("log_created", "desc")
+        .get();
+    } else {
+      // FALSE
+      snapshot = await firestore
+        .collection("transactionLogs")
+        .where("isReconciled", "==", showReconciled)
+        .orderBy("log_created", "desc")
+        .get();
+    }
     const transactionLogs: any[] = [];
 
     if (snapshot.docs.length != 0) {
@@ -110,6 +120,7 @@ export const xeroGetListOfInvoices = async (
     const formatUrl: URL = new URL(XERO_INVOICES_URL);
     formatUrl.searchParams.append("page", pageNumber);
     formatUrl.searchParams.append("order", `Date ${orderDate}`);
+    formatUrl.searchParams.append("where", "Status==\"AUTHORISED\"");
 
     if (searchName) {
       formatUrl.searchParams.append("where", `Contact.Name=="${searchName}"`);
@@ -163,6 +174,27 @@ export const xeroReconcilePayment = async (
 ): Promise<ReturnValue> => {
   try {
     console.log("\nSTART OF xeroReconcilePayment:\n");
+
+    const transactionSnap = await firestore
+      .collection("transactionLogs")
+      .where("ip_transid", "==", paymentDetails.ip_transid)
+      .get();
+
+    const transactionFBData = transactionSnap.docs[0].data();
+    const transactionIsReconciled = transactionFBData["isReconciled"];
+
+    if (transactionIsReconciled != false) {
+      // Not allowed to perform action because already RECONCILED
+      const result: ReturnValue = {
+        success: false,
+        value:
+          "Cannot perform action. This payment has already been reconciled with another invoice.",
+        statusCode: 400,
+      };
+      return result;
+    }
+
+    console.log(`Transaction reconciled: ${transactionIsReconciled}`);
 
     const doc = await firestore.collection("CBKAccounting").doc("tokens").get();
     const dataMap = doc.data();
@@ -222,16 +254,16 @@ export const xeroReconcilePayment = async (
 
       const result: ReturnValue = {
         success: true,
-        value: {
-          info: `iPay88 payment successfully reconciled with ${invoiceDetails.InvoiceNumber}.`,
-        },
+        value: `iPay88 payment successfully reconciled with ${invoiceDetails.InvoiceNumber}.`,
+
         statusCode,
       };
       return result;
     } else {
       const result: ReturnValue = {
         success: false,
-        value: body,
+        value: "Failed to reconcile iPay88 transaction. Please try again.",
+        error: body,
         statusCode,
       };
       return result;
@@ -240,11 +272,9 @@ export const xeroReconcilePayment = async (
     console.log(`xeroReconcilePayment | FAILED with catch error: ${err}`);
     const result: ReturnValue = {
       success: false,
-      value: {
-        message:
-          "An internal error has occured. No actions were made to Xero. Please try again or contact your developer.",
-        error: JSON.stringify(err),
-      },
+      value:
+        "An internal error has occured. No actions were made to Xero. Please try again or contact your developer.",
+      error: JSON.stringify(err),
       statusCode: 500,
     };
     return result;
