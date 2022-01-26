@@ -11,7 +11,6 @@ import {
   sendNodeMail,
   sendWeeklyReportMail,
   weeklyReportSuccessUpdate,
-  xeroGetListOfInvoices,
   xeroGetTenantConnections,
   xeroRefreshAccessToken,
   XeroTransactionObject,
@@ -26,7 +25,11 @@ import os = require("os");
 import fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 import path = require("path");
-import { getTransactionLogs } from "./helper_ui";
+import {
+  getTransactionLogs,
+  xeroGetListOfInvoices,
+  xeroReconcilePayment,
+} from "./helper_ui";
 // import { firestore } from "firebase-admin";
 
 admin.initializeApp({
@@ -322,9 +325,28 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
   }
 );
 
-exports.authenticateFirebaseUser = functions.https.onRequest(
+exports.xeroReconcilePayment = functions.https.onRequest(
   async (request, response) => {
     // get details from HEADER
+
+    const invoiceDetails: Record<string, string> = request.body.invoiceDetails;
+    const paymentDetails: Record<string, string> = request.body.paymentDetails;
+
+    const { success, value, statusCode } = await xeroReconcilePayment(
+      db,
+      invoiceDetails,
+      paymentDetails
+    );
+
+    if (success) {
+      response.setHeader("Access-Control-Allow-Origin", "*");
+      response.status(200).send(value);
+      return;
+    } else {
+      response.setHeader("Access-Control-Allow-Origin", "*");
+      response.status(statusCode ?? 500).send(value);
+      return;
+    }
   }
 );
 
@@ -885,7 +907,8 @@ exports.getTransactionLogs = functions.https.onRequest(
 );
 
 // USED FOR TESTING ONLY
-  exports.xeroRefreshToken = functions.https.onRequest(async (request, response) => {
+exports.xeroRefreshToken = functions.https.onRequest(
+  async (request, response) => {
     console.log("\nCLOUD FUNCTION START OF xeroRefreshToken:\n");
 
     console.log("xeroinputMain | RAN from request IP: " + request.ips[0]);
@@ -918,13 +941,19 @@ exports.getTransactionLogs = functions.https.onRequest(
 
     if (refreshSuccess) {
       console.log("Cloud Function xeroRefreshToken | Success");
-      response.status(200).send("Access Token and Refresh Token updated successful.");
+      response
+        .status(200)
+        .send("Access Token and Refresh Token updated successful.");
     } else {
       console.log("Cloud Function xeroRefreshToken | Failed");
-      response.status(500).send("Failed to update Access Token and Refresh Token, please try again.");
+      response
+        .status(500)
+        .send(
+          "Failed to update Access Token and Refresh Token, please try again."
+        );
     }
-
-  });
+  }
+);
 
 // LATEST FUNCTION
 // exports.xeroInputMain = functions.https.onRequest(async (request, response) => {

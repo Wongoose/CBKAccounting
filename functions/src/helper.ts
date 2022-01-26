@@ -14,7 +14,6 @@ const XERO_BANK_TRANSACTIONS_URL =
   "https://api.xero.com/api.xro/2.0/BankTransactions";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_TENANT_CONNECTIONS_URL = "https://api.xero.com/connections";
-const XERO_INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices";
 
 export const post = promisify(nodeRequest.post);
 export const get = promisify(nodeRequest.get);
@@ -178,80 +177,6 @@ export const xeroGetTenantConnections = async (
     }
   } catch (error) {
     return false;
-  }
-};
-
-export const xeroGetListOfInvoices = async (
-  firestore: FirebaseFirestore.Firestore,
-  pageNumber: string,
-  orderDate: string,
-  searchName: string | null
-): Promise<ReturnValue> => {
-  try {
-    console.log("\nSTART OF xeroGetListOfInvoices:\n");
-
-    const doc = await firestore.collection("CBKAccounting").doc("tokens").get();
-    const dataMap = doc.data();
-
-    if (dataMap === undefined) {
-      const result: ReturnValue = {
-        success: false,
-        value: "INTERNAL SERVER ERROR: Cannot read database.",
-        statusCode: 500,
-      };
-      return result;
-    }
-
-    const accessToken = dataMap["access_token"];
-    const xeroTenantId = dataMap["xero-tenant-id"];
-
-    // FORMATTING THE URL
-    const formatUrl: URL = new URL(XERO_INVOICES_URL);
-    formatUrl.searchParams.append("page", pageNumber);
-    formatUrl.searchParams.append("order", `Date ${orderDate}`);
-
-    if (searchName) {
-      formatUrl.searchParams.append("where", `Contact.Name=="${searchName}"`);
-    }
-
-    const { statusCode, body } = await get({
-      url: formatUrl.toString(),
-      // url: `${XERO_INVOICES_URL}?page=${pageNumber}&order=Date%20${orderDate}`,
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
-        "xero-tenant-id": xeroTenantId,
-      },
-    });
-
-    console.log("xeroGetListOfInvoices | statusCode:", statusCode);
-    console.log("xeroGetListOfInvoices | body length:", JSON.parse(body));
-
-    if (statusCode === 200) {
-      const listOfInvoices: Record<string, string> = JSON.parse(body).Invoices;
-      console.log("xeroGetListOfInvoices | List of invoices success");
-      const result: ReturnValue = {
-        success: true,
-        value: listOfInvoices,
-        statusCode,
-      };
-      return result;
-    } else {
-      const result: ReturnValue = {
-        success: false,
-        value: JSON.parse(body),
-        statusCode: statusCode ?? body.Status,
-      };
-      return result;
-    }
-  } catch (error) {
-    const result: ReturnValue = {
-      success: false,
-      value: `Catch error: ${error}`,
-      statusCode: 500,
-    };
-    return result;
   }
 };
 
@@ -564,7 +489,7 @@ export const sendNodeMail = async (
       to: adminEmail,
       subject: mailMap.title,
       text:
-        "FWhat happened?\n" + mailMap.message + "\n\nFIX:\n" + mailMap.action,
+        "What happened?\n" + mailMap.message + "\n\nFIX:\n" + mailMap.action,
     };
 
     await transporter.sendMail(mailOptions);

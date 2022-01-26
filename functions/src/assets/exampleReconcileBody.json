@@ -1,0 +1,16 @@
+{
+  "invoiceDetails": {
+      "InvoiceNumber": "INV-0026",
+      "InvoiceID": ""
+  },
+  "paymentDetails": {
+      "remarks": "DUMMY paid fee",
+      "id": "168",
+      "transaction_date": "2021-11-07 9:35:12pm",
+      "ip_transid": "DUMMY123",
+      "ip_amount": "105.00",
+      "name": "DUMMY",
+      "email": "dummy@gmail.com",
+      "final_status": "not reconciled"
+  }
+}
