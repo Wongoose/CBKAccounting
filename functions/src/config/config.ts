@@ -13,8 +13,8 @@ const config: Config = {
     client_id: process.env.client_id,
     client_secret: process.env.client_secret,
     jwt_secret_key: process.env.jwt_secret_key,
-    gmailEmail: process.env.gmailEmail,
-    gmailPassword: process.env.gmailPassword,
+    gmailEmail: process.env.gmail_email,
+    gmailPassword: process.env.gmail_password,
     sendgrid_api_key: process.env.sendgrid_api_key,
 };
 
