@@ -561,7 +561,7 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
         });
         return;
       } else {
-        if (decoded?.id && request.body.id && decoded?.id === request.body.id) {
+        if ((decoded as jwt.JwtPayload)?.id && request.body.id && (decoded as jwt.JwtPayload)?.id === request.body.id) {
           // payment id is a match - jwt payload && request.body
 
           console.log("\nJWT VERIFY FLOW SUCCESS! PAYLOAD ID MATCHED.\n");
