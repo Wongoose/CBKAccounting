@@ -121,6 +121,7 @@ export const xeroGetListOfInvoices = async (
     formatUrl.searchParams.append("page", pageNumber);
     formatUrl.searchParams.append("order", `Date ${orderDate}`);
     formatUrl.searchParams.append("where", "Status==\"AUTHORISED\"");
+    formatUrl.searchParams.append("summaryOnly", "True");
 
     if (searchName) {
       formatUrl.searchParams.append("where", `Contact.Name=="${searchName}"`);
@@ -239,35 +240,66 @@ export const xeroReconcilePayment = async (
     console.log("xeroReconcilePayment | statusCode: " + statusCode);
     console.log("xeroReconcilePayment | body: " + body);
 
-    if (statusCode == 200) {
+    switch (statusCode) {
+    case 200: {
+      // Success
       const snapshot = await firestore
-        .collection("transactionLogs")
-        .where("ip_transid", "==", paymentDetails.ip_transid)
-        .get();
+      .collection("transactionLogs")
+      .where("ip_transid", "==", paymentDetails.ip_transid)
+      .get();
 
-      const doc = snapshot.docs[0];
+    const doc = snapshot.docs[0];
 
-      await firestore.collection("transactionLogs").doc(doc.id).update({
-        isReconciled: true,
-        reconciledInvoiceID: invoiceDetails.InvoiceID,
-      });
+    await firestore.collection("transactionLogs").doc(doc.id).update({
+      isReconciled: true,
+      reconciledInvoiceID: invoiceDetails.InvoiceID,
+    });
 
-      const result: ReturnValue = {
-        success: true,
-        value: `iPay88 payment successfully reconciled with ${invoiceDetails.InvoiceNumber}.`,
+    const result: ReturnValue = {
+      success: true,
+      value: `iPay88 payment successfully reconciled with ${invoiceDetails.InvoiceNumber}.`,
 
-        statusCode,
-      };
-      return result;
-    } else {
+      statusCode,
+    };
+    return result;
+
+    }
+    case 400: {
+      // ValidationErrors
       const result: ReturnValue = {
         success: false,
-        value: "Failed to reconcile iPay88 transaction. Please try again.",
+        value: `Failed to reconcile iPay88 transaction. ${JSON.parse(body).Elements[0]?.ValidationErrors[0]?.Message}`,
+        error: JSON.parse(body).Elements[0]?.ValidationErrors[0]?.Message,
+        // error: body.ValidationErrors[0].Message,
+        statusCode: 400,
+      };
+      return result;
+
+    }
+    case 401: {
+      // Unauthorized
+      const result: ReturnValue = {
+        success: false,
+        value:
+          "Failed to reconcile iPay88 transaction. Please sync data and try again.",
         error: body,
-        statusCode,
+        statusCode: 401,
       };
       return result;
     }
+    default: {
+      const result: ReturnValue = {
+        success: false,
+        value:
+          "An internal error has occured. No actions were made to Xero. Please try again or contact your developer.",
+        error: body,
+        statusCode: 500,
+      };
+      return result;
+    }
+}
+
+
   } catch (err) {
     console.log(`xeroReconcilePayment | FAILED with catch error: ${err}`);
     const result: ReturnValue = {

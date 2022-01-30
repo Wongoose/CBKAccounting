@@ -1,0 +1,71 @@
+{
+  "ErrorNumber": 10,
+  "Type": "ValidationException",
+  "Message": "A validation exception occurred",
+  "Elements": [
+    {
+      "Date": "/Date(1642723200000+0000)/",
+      "Amount": 236.0,
+      "Reference": "aa01065010412@gmail.com | ",
+      "HasAccount": true,
+      "IsReconciled": true,
+      "Account": {
+        "AccountID": "562555f2-8cde-4ce9-8203-0363922537a4",
+        "Code": "090",
+        "Name": "Business Bank Account",
+        "Status": "ACTIVE",
+        "Type": "BANK",
+        "TaxType": "NONE",
+        "Class": "ASSET",
+        "EnablePaymentsToAccount": false,
+        "ShowInExpenseClaims": false,
+        "BankAccountNumber": "0908007006543",
+        "BankAccountType": "BANK",
+        "CurrencyCode": "USD",
+        "ReportingCode": "ASS",
+        "ReportingCodeName": "Asset",
+        "UpdatedDateUTC": "/Date(1641549393337+0000)/",
+        "AddToWatchlist": false
+      },
+      "Invoice": {
+        "Type": "ACCREC",
+        "InvoiceID": "bd63b5f1-5503-4c62-9c4a-e4b9e4257dc9",
+        "InvoiceNumber": "INV-0006",
+        "Reference": "P/O 9711",
+        "Prepayments": [],
+        "Overpayments": [],
+        "AmountDue": 5.0,
+        "AmountPaid": 245.0,
+        "SentToContact": true,
+        "SentToEmailAddress": "",
+        "CurrencyRate": 1.0,
+        "IsDiscounted": false,
+        "HasErrors": false,
+        "Contact": {
+          "ContactID": "7c913d33-39d5-4a1c-b8b1-e23f5fc999e0",
+          "Name": "City Limousines",
+          "ContactPersons": [],
+          "HasValidationErrors": false
+        },
+        "DateString": "2021-11-05T00:00:00",
+        "Date": "/Date(1636070400000+0000)/",
+        "DueDateString": "2021-11-15T00:00:00",
+        "DueDate": "/Date(1636934400000+0000)/",
+        "BrandingThemeID": "d613f7f9-8fcb-477f-97f0-31eb85b7e5cf",
+        "Status": "AUTHORISED",
+        "LineAmountTypes": "Inclusive",
+        "SubTotal": 230.95,
+        "TotalTax": 19.05,
+        "Total": 250.0,
+        "UpdatedDateUTC": "/Date(1643273820063+0000)/",
+        "CurrencyCode": "USD"
+      },
+      "HasValidationErrors": true,
+      "ValidationErrors": [
+        {
+          "Message": "Payment amount exceeds the amount outstanding on this document"
+        }
+      ]
+    }
+  ]
+}
