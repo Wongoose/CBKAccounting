@@ -270,7 +270,6 @@ export const xeroReconcilePayment = async (
         success: false,
         value: `Failed to reconcile iPay88 transaction. ${JSON.parse(body).Elements[0]?.ValidationErrors[0]?.Message}`,
         error: JSON.parse(body).Elements[0]?.ValidationErrors[0]?.Message,
-        // error: body.ValidationErrors[0].Message,
         statusCode: 400,
       };
       return result;

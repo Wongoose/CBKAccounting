@@ -2,8 +2,6 @@ import * as functions from "firebase-functions";
 import base64 = require("base-64");
 import config from "./config/config";
 import admin = require("firebase-admin");
-import bodyParser = require("body-parser");
-bodyParser;
 import {
   generateFirebaseOTP,
   generateTransactionLog,
@@ -20,9 +18,6 @@ import {
 import jwt = require("jsonwebtoken");
 import converter = require("json-2-csv");
 
-// import { signInEmailWithLink } from "./auth";
-// import open = require("open");
-// import Busboy = require("busboy");
 import os = require("os");
 import fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
@@ -32,7 +27,7 @@ import {
   xeroGetListOfInvoices,
   xeroReconcilePayment,
 } from "./helper_ui";
-// import { firestore } from "firebase-admin";
+import { verifyUserFromCaller } from "./helper_auth";
 
 admin.initializeApp({
   storageBucket: "cbkaccounting.appspot.com",
@@ -45,9 +40,6 @@ const auth = admin.auth();
 const cbkAccountingCollection = db.collection("CBKAccounting");
 
 const { client_id, client_secret, jwt_secret_key } = config;
-
-// console.log("Client ID is: " + client_id);
-// console.log("Client Secret is: " + client_secret);
 
 // const FUNCTION_AUTH_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroManualAuth";
 // const FUNCTION_REDIRECT_URL = "http://localhost:5001/cbkaccounting/us-central1/xeroRedirectUrl";
@@ -125,7 +117,12 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
   async (request, response) => {
     console.log("\nSTART OF xeroGetListOfInvoices\n");
 
-    // 1, 2, 3 etc
+    const verificationSuccess = await verifyUserFromCaller(request, response, auth);
+
+    if (!verificationSuccess) {
+      return;
+    }
+          // 1, 2, 3 etc
     const pageNumber = request.query["page"] as string;
     // ASC or DESC
     const orderDate = request.query["orderDate"] as string;
@@ -142,15 +139,6 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
       orderDate ?? "ASC",
       searchName
     );
-
-    // if (success) {
-    //   response.setHeader("Access-Control-Allow-Origin", "*");
-    //   response.status(200).send(value);
-    // } else {
-    //   response.setHeader("Access-Control-Allow-Origin", "*");
-    //   response.status(500).send(value);
-    // }
-    response.setHeader("Access-Control-Allow-Origin", "*");
 
     switch (statusCode) {
       case 200:
@@ -331,59 +319,11 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
 exports.xeroReconcilePayment = functions.https.onRequest(
   async (request, response) => {
     // get details from HEADER
-    response.setHeader(
-      "Access-Control-Allow-Headers",
-      "append,delete,entries,foreach,get,has,keys,set,values,content-type,Authorization"
-    );
-    console.log(`Request headers origin is: ${request.headers.origin}`);
+  const verificationSuccess = await verifyUserFromCaller(request, response, auth);
 
-    if (
-      request.headers.origin == "https://cbkreconciliation.web.app" ||
-      request.headers.origin == "http://127.0.0.1:5500"
-    ) {
-      response.setHeader("Access-Control-Allow-Origin", request.headers.origin);
-    }
-    response.setHeader(
-      "Access-Control-Allow-Methods",
-      "POST, GET, PUT, OPTIONS"
-    );
-
-    const token = request.headers.authorization?.split(" ")[1];
-    console.log("fbToken | token is: " + token);
-
-    if (token === undefined) {
-      response.status(200).send({
-        statusCode: 403,
-        errorCode: "MISSING-TOKEN",
-        message:
-          "Could not find token in authorization header. Request rejected.",
-      });
-      return;
-    }
-
-    const decodedIdToken = await auth.verifyIdToken(token, true);
-
-    if (decodedIdToken === undefined) {
-      response.status(200).send({
-        statusCode: 403,
-        errorCode: "INVALID-TOKEN",
-        message: "Invalid token in authorization header. Request rejected.",
-      });
-      return;
-    }
-
-    const user = await auth.getUser(decodedIdToken.uid);
-    if (user.disabled) {
-      response.status(200).send({
-        statusCode: 403,
-        errorCode: "DISABLED-USER",
-        message: "This user is disabled. Request rejected.",
-      });
-      return;
-    }
-
-    console.log(`Request made by user uid: ${user.uid}`);
-
+  if (!verificationSuccess) {
+    return;
+  }
     const jsonBody = JSON.parse(request.body);
 
     const invoiceDetails = jsonBody.invoiceDetails;
@@ -957,6 +897,12 @@ exports.sendWeeklyReportEmail = functions.https.onRequest(
 exports.getTransactionLogs = functions.https.onRequest(
   async (request, response) => {
     try {
+      const verificationSuccess = await verifyUserFromCaller(request, response, auth);
+
+      if (!verificationSuccess) {
+        return;
+      }
+
       const showReconciled = request.query["showReconciled"] ?? "true";
       const boolShow = showReconciled == "true";
 
@@ -966,16 +912,13 @@ exports.getTransactionLogs = functions.https.onRequest(
       );
 
       if (success) {
-        response.setHeader("Access-Control-Allow-Origin", "*");
         response.status(200).send(value);
         return;
       } else {
-        response.setHeader("Access-Control-Allow-Origin", "*");
         response.status(statusCode ?? 500).send(value);
         return;
       }
     } catch (error) {
-      response.setHeader("Access-Control-Allow-Origin", "*");
       response.status(500).send(error);
       return;
     }
