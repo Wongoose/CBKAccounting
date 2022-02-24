@@ -14,6 +14,7 @@ export const verifyUserFromCaller = async (request: functions.https.Request, res
     // || request.headers.origin == "http://127.0.0.1:5500"
   ) {
     response.setHeader("Access-Control-Allow-Origin", request.headers.origin);
+    // response.setHeader("Access-Control-Allow-Origin", "*");
   }
   response.setHeader(
     "Access-Control-Allow-Methods",
