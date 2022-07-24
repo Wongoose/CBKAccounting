@@ -11,7 +11,7 @@ export const verifyUserFromCaller = async (request: functions.https.Request, res
 
   if (
     request.headers.origin == "https://cbkreconciliation.web.app"
-    // || request.headers.origin == "http://127.0.0.1:5500"
+    // || request.headers.origin == "http://127.0.0.1:5501"
   ) {
     response.setHeader("Access-Control-Allow-Origin", request.headers.origin);
     // response.setHeader("Access-Control-Allow-Origin", "*");

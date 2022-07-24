@@ -10,12 +10,12 @@ type Config = {
 }
 
 const config: Config = {
-    client_id: process.env.client_id,
-    client_secret: process.env.client_secret,
-    jwt_secret_key: process.env.jwt_secret_key,
-    gmailEmail: process.env.gmail_email,
-    gmailPassword: process.env.gmail_password,
-    sendgrid_api_key: process.env.sendgrid_api_key,
+    client_id: process.env.CLIENT_ID,
+    client_secret: process.env.CLIENT_SECRET,
+    jwt_secret_key: process.env.JWT_SECRET_KEY,
+    gmailEmail: process.env.GMAIL_EMAIL,
+    gmailPassword: process.env.GMAIL_PASSWORD,
+    sendgrid_api_key: process.env.SENDGRID_API_KEY,
 };
 
 export default config;
