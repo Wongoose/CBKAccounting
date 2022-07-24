@@ -122,11 +122,10 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
     if (!verificationSuccess) {
       return;
     }
-          // 1, 2, 3 etc
+    // 1, 2, 3 etc
     const pageNumber = request.query["page"] as string;
     // ASC or DESC
     const orderDate = request.query["orderDate"] as string;
-    // John Doe
     const searchName = request.query["searchName"] as string;
 
     const resultOTP = await generateFirebaseOTP(db);
