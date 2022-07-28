@@ -436,7 +436,6 @@ exports.xeroRedirectUrl = functions.https.onRequest(
 
 // MAIN BODY FUNCTION - CALLED BY WEBHOOK (NO NEED TO CONNECT TO XERO)
 exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
-  // inputXeroApi | this function should be called by WebHooks, parsing in the csvFile - POST
 
   if (request.method !== "POST") {
     response.status(405).send({
