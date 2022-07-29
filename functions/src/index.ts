@@ -467,7 +467,6 @@ exports.xeroInputMain = functions.https.onRequest(async (request, response) => {
   const token = request.headers.authorization?.split(" ")[1];
   console.log("verifyJwt | token is: " + token);
   console.log("verifyJwt | body is: " + request.body);
-  console.log("My secret key is: " + jwt_secret_key);
 
   if (token === undefined) {
     response.status(403).send({
