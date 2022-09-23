@@ -168,7 +168,11 @@ export const xeroGetListOfInvoices = async (
   }
 };
 
-export const xeroReconcilePayment = async (
+// Create Function 2: One payment to many invoices
+//    - Allow if Payment amount == sum of Invoices amounts
+//    - Reconcile both payment and invoices (no carry forward. strict rules.)
+
+export const xeroReconcilePayment = async (                                         // <---- UPDATE: Function 1 - One/many payment to one invoice
   firestore: FirebaseFirestore.Firestore,
   invoiceDetails: Record<string, string>,
   paymentDetails: Record<string, string>
@@ -211,7 +215,8 @@ export const xeroReconcilePayment = async (
 
     const accessToken = dataMap["access_token"];
     const xeroTenantId = dataMap["xero-tenant-id"];
-    const bankAccountCode = dataMap["bank-account-code"];
+    const bankAccountCode = dataMap["bank-account-code"];                           
+                                                                                    // <---- UPDATE: IF Payment amount <= Invoice remaining, then PROCEED.
 
     const requestBody = {
       Invoice: {
@@ -222,7 +227,7 @@ export const xeroReconcilePayment = async (
       Date: paymentDetails.transaction_date,
       Amount: paymentDetails.ip_amount,
       Reference: `${paymentDetails.email} | ${paymentDetails.remarks}`,
-      IsReconciled: true,
+      IsReconciled: true,                                                           // <---- UPDATE: Reconcile invoice only if Payment amount - Invoice remaining == 0
     };
 
     const { statusCode, body } = await put({
@@ -249,9 +254,9 @@ export const xeroReconcilePayment = async (
       .get();
 
     const doc = snapshot.docs[0];
-
+ 
     await firestore.collection("transactionLogs").doc(doc.id).update({
-      isReconciled: true,
+      isReconciled: true,                                                           // <---- UPDATE: Always true since above criteria is met "Payment amount <= Invoice remaining"
       reconciledInvoiceID: invoiceDetails.InvoiceID,
     });
 
