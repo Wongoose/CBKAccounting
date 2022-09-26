@@ -172,7 +172,7 @@ export const xeroGetListOfInvoices = async (
 //    - Allow if Payment amount == sum of Invoices amounts
 //    - Reconcile both payment and invoices (no carry forward. strict rules.)
 
-export const xeroReconcilePayment = async (                                         // <---- UPDATE: Function 1 - One/many payment to one invoice
+export const xeroReconcilePayment = async ( // <---- UPDATE: Function 1 - One/many payment to one invoice
   firestore: FirebaseFirestore.Firestore,
   invoiceDetails: Record<string, string>,
   paymentDetails: Record<string, string>
@@ -215,8 +215,20 @@ export const xeroReconcilePayment = async (                                     
 
     const accessToken = dataMap["access_token"];
     const xeroTenantId = dataMap["xero-tenant-id"];
-    const bankAccountCode = dataMap["bank-account-code"];                           
-                                                                                    // <---- UPDATE: IF Payment amount <= Invoice remaining, then PROCEED.
+    const bankAccountCode = dataMap["bank-account-code"];
+
+    // <---- UPDATE: IF Payment amount <= Invoice remaining, then PROCEED.
+    if (parseInt(paymentDetails.ip_amount) > parseInt(invoiceDetails.AmountDue)) {
+      console.log("BAD REQUEST: Payment amount is more than the invoice's amount due");
+      const result: ReturnValue = {
+        success: false,
+        value: "BAD REQUEST: Payment amount is more than the invoice's amount due",
+        statusCode: 400,
+      };
+      return result;
+    }
+
+    const invoiceIsReconciled = parseInt(paymentDetails.ip_amount) - parseInt(invoiceDetails.AmountDue) == 0;
 
     const requestBody = {
       Invoice: {
@@ -227,7 +239,8 @@ export const xeroReconcilePayment = async (                                     
       Date: paymentDetails.transaction_date,
       Amount: paymentDetails.ip_amount,
       Reference: `${paymentDetails.email} | ${paymentDetails.remarks}`,
-      IsReconciled: true,                                                           // <---- UPDATE: Reconcile invoice only if Payment amount - Invoice remaining == 0
+      // <---- UPDATE: Reconcile invoice only if Payment amount - Invoice remaining == 0
+      IsReconciled: invoiceIsReconciled,
     };
 
     const { statusCode, body } = await put({
@@ -254,16 +267,16 @@ export const xeroReconcilePayment = async (                                     
       .get();
 
     const doc = snapshot.docs[0];
- 
+
     await firestore.collection("transactionLogs").doc(doc.id).update({
-      isReconciled: true,                                                           // <---- UPDATE: Always true since above criteria is met "Payment amount <= Invoice remaining"
+      // <---- UPDATE: isReconciled is always true since above criteria is met "Payment amount <= Invoice remaining"
+      isReconciled: true,
       reconciledInvoiceID: invoiceDetails.InvoiceID,
     });
 
     const result: ReturnValue = {
       success: true,
       value: `iPay88 payment successfully reconciled with ${invoiceDetails.InvoiceNumber}.`,
-
       statusCode,
     };
     return result;
