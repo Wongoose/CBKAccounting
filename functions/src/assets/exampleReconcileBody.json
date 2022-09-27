@@ -1,7 +1,8 @@
 {
   "invoiceDetails": {
       "InvoiceNumber": "INV-0026",
-      "InvoiceID": ""
+      "InvoiceID": "",
+      "AmountDue": 200
   },
   "paymentDetails": {
       "remarks": "DUMMY paid fee",

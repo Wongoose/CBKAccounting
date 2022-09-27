@@ -172,7 +172,8 @@ export const xeroGetListOfInvoices = async (
 //    - Allow if Payment amount == sum of Invoices amounts
 //    - Reconcile both payment and invoices (no carry forward. strict rules.)
 
-export const xeroReconcilePayment = async ( // <---- UPDATE: Function 1 - One/many payment to one invoice
+// <---- UPDATE: Function 1 - One/many payment to one invoice
+export const xeroReconcilePayment = async (
   firestore: FirebaseFirestore.Firestore,
   invoiceDetails: Record<string, string>,
   paymentDetails: Record<string, string>
@@ -266,20 +267,20 @@ export const xeroReconcilePayment = async ( // <---- UPDATE: Function 1 - One/ma
       .where("ip_transid", "==", paymentDetails.ip_transid)
       .get();
 
-    const doc = snapshot.docs[0];
+      const doc = snapshot.docs[0];
 
-    await firestore.collection("transactionLogs").doc(doc.id).update({
-      // <---- UPDATE: isReconciled is always true since above criteria is met "Payment amount <= Invoice remaining"
-      isReconciled: true,
-      reconciledInvoiceID: invoiceDetails.InvoiceID,
-    });
+      await firestore.collection("transactionLogs").doc(doc.id).update({
+        // <---- UPDATE: isReconciled is always true since above criteria is met "Payment amount <= Invoice remaining"
+        isReconciled: true,
+        reconciledInvoiceID: invoiceDetails.InvoiceID,
+      });
 
-    const result: ReturnValue = {
-      success: true,
-      value: `iPay88 payment successfully reconciled with ${invoiceDetails.InvoiceNumber}.`,
-      statusCode,
-    };
-    return result;
+      const result: ReturnValue = {
+        success: true,
+        value: `iPay88 payment successfully reconciled with ${invoiceDetails.InvoiceNumber}.`,
+        statusCode,
+      };
+      return result;
 
     }
     case 400: {

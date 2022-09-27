@@ -315,6 +315,10 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
   }
 );
 
+// <- UPDATE: Create 2nd function call (One payment to multiple invoices)
+// Test whether total match logic first
+// Test Firebase update, do not connect to Xero
+// Final test with dummy Xero invoices
 exports.xeroReconcilePayment = functions.https.onRequest(
   async (request, response) => {
     // get details from HEADER
