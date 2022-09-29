@@ -219,7 +219,7 @@ export const xeroReconcilePayment = async (
     const bankAccountCode = dataMap["bank-account-code"];
 
     // <---- UPDATE: IF Payment amount <= Invoice remaining, then PROCEED.
-    if (parseInt(paymentDetails.ip_amount) > parseInt(invoiceDetails.AmountDue)) {
+    if (Number(paymentDetails.ip_amount) > Number(invoiceDetails.AmountDue)) {
       console.log("BAD REQUEST: Payment amount is more than the invoice's amount due");
       const result: ReturnValue = {
         success: false,
@@ -229,7 +229,7 @@ export const xeroReconcilePayment = async (
       return result;
     }
 
-    const invoiceIsReconciled = parseInt(paymentDetails.ip_amount) - parseInt(invoiceDetails.AmountDue) == 0;
+    const invoiceIsReconciled = Number(paymentDetails.ip_amount) - Number(invoiceDetails.AmountDue) == 0;
 
     const requestBody = {
       Invoice: {

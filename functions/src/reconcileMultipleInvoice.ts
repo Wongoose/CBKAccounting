@@ -1,6 +1,7 @@
 import { ReturnValue } from "./helper";
 import { promisify } from "util";
 import nodeRequest = require("request");
+import admin = require("firebase-admin");
 
 export const put = promisify(nodeRequest.put);
 const XERO_PAYMENTS_URL = "https://api.xero.com/api.xro/2.0/Payments";
@@ -14,7 +15,7 @@ export const reconcileMultipleInvoice = async (
   ): Promise<ReturnValue> => {
     try {
       console.log("\nSTART OF reconcileMultipleInvoice:\n");
-      
+
       const transactionSnap = await firestore
       .collection("transactionLogs")
       .where("ip_transid", "==", paymentDetails.ip_transid)
@@ -22,7 +23,7 @@ export const reconcileMultipleInvoice = async (
 
       const transactionFBData = transactionSnap.docs[0].data();
       const transactionIsReconciled = transactionFBData["isReconciled"];
-  
+
       if (transactionIsReconciled != false) {
         // Not allowed to perform action because already RECONCILED
         const result: ReturnValue = {
@@ -33,12 +34,12 @@ export const reconcileMultipleInvoice = async (
         };
         return result;
       }
-  
+
       console.log(`Transaction reconciled: ${transactionIsReconciled}`);
-  
+
       const doc = await firestore.collection("CBKAccounting").doc("tokens").get();
       const dataMap = doc.data();
-  
+
       if (dataMap === undefined) {
         const result: ReturnValue = {
           success: false,
@@ -53,10 +54,10 @@ export const reconcileMultipleInvoice = async (
       const bankAccountCode = dataMap["bank-account-code"];
 
       let totalInvoiceAmount = 0;
-      let ip_amount = parseInt(paymentDetails.ip_amount);
-      invoiceArray.map((invoice) => totalInvoiceAmount += parseInt(invoice.AmountDue));
+      const ip_amount = Number(paymentDetails.ip_amount);
+      invoiceArray.map((invoice) => totalInvoiceAmount += Number(invoice.AmountDue));
 
-      if (parseInt(paymentDetails.ip_amount) != totalInvoiceAmount) {
+      if (ip_amount != totalInvoiceAmount) {
         console.log("BAD REQUEST: Payment amount does not match the total invoice amount");
         const result: ReturnValue = {
           success: false,
@@ -77,15 +78,16 @@ export const reconcileMultipleInvoice = async (
 
       // Loop through each invoice to reconcile
       let loopFailed = false;
-      invoiceArray.forEach(async(invoice) => {
+      for (let i = 0; i < invoiceArray.length; i++) {
+
         const requestBody = {
           Invoice: {
-            InvoiceNumber: invoice.InvoiceNumber,
+            InvoiceNumber: invoiceArray[i].InvoiceNumber,
             // InvoiceID: invoiceDetails.InvoiceID,
           },
           Account: { Code: bankAccountCode },
           Date: paymentDetails.transaction_date,
-          Amount: invoice.AmountDue,
+          Amount: invoiceArray[i].AmountDue,
           Reference: `${paymentDetails.email} | ${paymentDetails.remarks}`,
           IsReconciled: true,
         };
@@ -104,27 +106,25 @@ export const reconcileMultipleInvoice = async (
 
         console.log("reconcileMultipleInvoice | statusCode: " + statusCode);
         if (statusCode == 200) {
-          ip_amount -= parseInt(invoice.AmountDue);
+        // if (ip_amount >= 0) {
           await firestore.collection("transactionLogs").doc(trans_doc.id).update({
-            listOfReconciledInvoiceID: FirebaseFirestore.FieldValue.arrayUnion([invoice.InvoiceID]),
+            listOfReconciledInvoiceIDs: admin.firestore.FieldValue.arrayUnion(invoiceArray[i].InvoiceID),
           });
         } else {
           loopFailed = true;
         }
-      });
+      }
 
       // Check again if loop failed && total ip_amount has been matched
-      if (!loopFailed && ip_amount == 0)
-      {
+      if (!loopFailed) {
         // SUCCESS!
         await firestore.collection("transactionLogs").doc(trans_doc.id).update({
-          // Only true when match with last invoice in array
           isReconciled: true,
         });
 
         const result: ReturnValue = {
           success: true,
-          value: `iPay88 payment successfully reconciled with ${invoiceArray.length} invoices.`,
+          value: `iPay88 payment successfully reconciled with ${invoiceArray.length} invoices. Total invoice amount is RM${totalInvoiceAmount}. iPay88 amount is RM${paymentDetails.ip_amount}`,
           statusCode: 200,
         };
         return (result);
@@ -139,7 +139,7 @@ export const reconcileMultipleInvoice = async (
         return (result);
       }
 
-    } catch(err) {
+    } catch (err) {
       console.log(`reconcileMultipleInvoice | FAILED with catch error: ${err}`);
       const result: ReturnValue = {
         success: false,
@@ -150,4 +150,4 @@ export const reconcileMultipleInvoice = async (
       };
       return (result);
     }
-  }
+  };

@@ -28,6 +28,7 @@ import {
   xeroReconcilePayment,
 } from "./helper_ui";
 import { verifyUserFromCaller } from "./helper_auth";
+import { reconcileMultipleInvoice } from "./reconcileMultipleInvoice";
 
 admin.initializeApp({
   storageBucket: "cbkaccounting.appspot.com",
@@ -316,9 +317,40 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
 );
 
 // <- UPDATE: Create 2nd function call (One payment to multiple invoices)
-// Test whether total match logic first
-// Test Firebase update, do not connect to Xero
-// Final test with dummy Xero invoices
+// Test whether total match logic first - DONE
+// Test Firebase update, do not connect to Xero - DONE
+// Test with postamn and dummy Xero invoices - NEXT
+// Final test with cbkreconciliation web with dummy Xero invoices
+
+exports.reconcileMultipleInvoice = functions.https.onRequest(async (request, response) => {
+  const verificationSuccess = await verifyUserFromCaller(request, response, auth);
+  if (!verificationSuccess) {
+    return;
+  }
+
+  const jsonBody = JSON.parse(request.body);
+  const invoiceArray = jsonBody.invoiceArray;
+  const paymentDetails = jsonBody.paymentDetails;
+
+  // Input validation check
+  if (invoiceArray === undefined || paymentDetails === undefined) {
+    console.log("request body details are undefined");
+    response.status(200).send();
+    return;
+  }
+
+  const { success, value, statusCode, error } = await reconcileMultipleInvoice(db, invoiceArray, paymentDetails);
+  if (success) {
+    response.status(200).send({ statusCode, message: value, error });
+    return;
+  } else {
+    response.status(200).send({ statusCode, message: value, error });
+    // response.status(200).send(value);
+    return;
+  }
+});
+
+// This is the function to reconcile 1/many payment to 1 invoice
 exports.xeroReconcilePayment = functions.https.onRequest(
   async (request, response) => {
     // get details from HEADER
