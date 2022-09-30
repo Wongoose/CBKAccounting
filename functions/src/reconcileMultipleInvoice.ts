@@ -92,7 +92,7 @@ export const reconcileMultipleInvoice = async (
           IsReconciled: true,
         };
 
-        const { statusCode } = await put({
+        const { statusCode, body } = await put({
           url: XERO_PAYMENTS_URL,
           // url: `${XERO_INVOICES_URL}?page=${pageNumber}&order=Date%20${orderDate}`,
           method: "PUT",
@@ -108,10 +108,12 @@ export const reconcileMultipleInvoice = async (
         if (statusCode == 200) {
         // if (ip_amount >= 0) {
           await firestore.collection("transactionLogs").doc(trans_doc.id).update({
-            listOfReconciledInvoiceIDs: admin.firestore.FieldValue.arrayUnion(invoiceArray[i].InvoiceID),
+            listOfReconciledInvoiceIDs: admin.firestore.FieldValue.arrayUnion(invoiceArray[i].InvoiceNumber),
           });
         } else {
+          console.log(`ERROR reconcileMultipleInvoice: ${body}`);
           loopFailed = true;
+          break;
         }
       }
 

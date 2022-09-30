@@ -316,17 +316,33 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
   }
 );
 
+// TESTING FUNCTION
+// exports.generateDummyInvoice = functions.https.onRequest(async (request, response) => {
+//   const jsonBody = JSON.parse(request.body);
+//   const invoice = jsonBody.invoice;
+
+//   const { success, value, statusCode, error } = await generateDummyInvoice(db, invoice);
+//   if (success) {
+//     response.status(200).send({ statusCode, message: value, error });
+//     return;
+//   } else {
+//     response.status(200).send({ statusCode, message: value, error });
+//     // response.status(200).send(value);
+//     return;
+//   }
+// });
+
 // <- UPDATE: Create 2nd function call (One payment to multiple invoices)
 // Test whether total match logic first - DONE
 // Test Firebase update, do not connect to Xero - DONE
-// Test with postamn and dummy Xero invoices - NEXT
-// Final test with cbkreconciliation web with dummy Xero invoices
+// Test with postamn and dummy Xero invoices - DONE
+// Final test with cbkreconciliation web with dummy Xero invoices - NEXT
 
 exports.reconcileMultipleInvoice = functions.https.onRequest(async (request, response) => {
-  // const verificationSuccess = await verifyUserFromCaller(request, response, auth);
-  // if (!verificationSuccess) {
-  //   return;
-  // }
+  const verificationSuccess = await verifyUserFromCaller(request, response, auth);
+  if (!verificationSuccess) {
+    return;
+  }
 
   const jsonBody = JSON.parse(request.body);
   const invoiceArray = jsonBody.invoiceArray;
@@ -359,41 +375,40 @@ exports.xeroReconcilePayment = functions.https.onRequest(
   if (!verificationSuccess) {
     return;
   }
-    const jsonBody = JSON.parse(request.body);
+  const jsonBody = JSON.parse(request.body);
 
-    const invoiceDetails = jsonBody.invoiceDetails;
-    const paymentDetails = jsonBody.paymentDetails;
-    console.log("\nbody invoiceDetails: " + invoiceDetails);
-    console.log("\nbody paymentDetails: " + paymentDetails);
+  const invoiceDetails = jsonBody.invoiceDetails;
+  const paymentDetails = jsonBody.paymentDetails;
+  console.log("\nbody invoiceDetails: " + invoiceDetails);
+  console.log("\nbody paymentDetails: " + paymentDetails);
 
-    if (invoiceDetails === undefined || paymentDetails === undefined) {
-      console.log("request body details are undefined");
-      response.status(200).send();
-      return;
-    }
-
-    const { success, value, statusCode, error } = await xeroReconcilePayment(
-      db,
-      invoiceDetails,
-      paymentDetails
-    );
-
-    console.log("Status code after function: " + statusCode);
-
-    // const success = true;
-    // const value = "test";
-    // const statusCode = 200;
-
-    if (success) {
-      response.status(200).send({ statusCode, message: value, error });
-      return;
-    } else {
-      response.status(200).send({ statusCode, message: value, error });
-      // response.status(200).send(value);
-      return;
-    }
+  if (invoiceDetails === undefined || paymentDetails === undefined) {
+    console.log("request body details are undefined");
+    response.status(200).send();
+    return;
   }
-);
+
+  const { success, value, statusCode, error } = await xeroReconcilePayment(
+    db,
+    invoiceDetails,
+    paymentDetails
+  );
+
+  console.log("Status code after function: " + statusCode);
+
+  // const success = true;
+  // const value = "test";
+  // const statusCode = 200;
+
+  if (success) {
+    response.status(200).send({ statusCode, message: value, error });
+    return;
+  } else {
+    response.status(200).send({ statusCode, message: value, error });
+    // response.status(200).send(value);
+    return;
+  }
+});
 
 // REDIRECTED FROM XERO MANUAL AUTH
 exports.xeroRedirectUrl = functions.https.onRequest(

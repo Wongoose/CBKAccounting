@@ -1,7 +1,6 @@
 {
   "invoiceDetails": {
       "InvoiceNumber": "INV-0026",
-      "InvoiceID": "",
       "AmountDue": 200
   },
   "paymentDetails": {
