@@ -323,10 +323,10 @@ exports.xeroGetListOfInvoices = functions.https.onRequest(
 // Final test with cbkreconciliation web with dummy Xero invoices
 
 exports.reconcileMultipleInvoice = functions.https.onRequest(async (request, response) => {
-  const verificationSuccess = await verifyUserFromCaller(request, response, auth);
-  if (!verificationSuccess) {
-    return;
-  }
+  // const verificationSuccess = await verifyUserFromCaller(request, response, auth);
+  // if (!verificationSuccess) {
+  //   return;
+  // }
 
   const jsonBody = JSON.parse(request.body);
   const invoiceArray = jsonBody.invoiceArray;
