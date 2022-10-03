@@ -6,7 +6,19 @@ import admin = require("firebase-admin");
 export const put = promisify(nodeRequest.put);
 const XERO_PAYMENTS_URL = "https://api.xero.com/api.xro/2.0/Payments";
 
-// NEXT - Main cloud function in index.ts
+type RequestBody = {
+  Invoice: {
+      InvoiceNumber: string;
+  };
+  Account: {
+      Code: any;
+  };
+  Date: string;
+  Amount: string;
+  Reference: string;
+  IsReconciled: boolean;
+}
+
 // NEXT - Error revert everything
 export const reconcileMultipleInvoice = async (
     firestore: FirebaseFirestore.Firestore,
@@ -76,11 +88,12 @@ export const reconcileMultipleInvoice = async (
 
       const trans_doc = snapshot.docs[0];
 
-      // Loop through each invoice to reconcile
-      let loopFailed = false;
+      // Loop through each invoice add to paymentList for batch API
+      let paymentList: Array<RequestBody> = [];
+
       for (let i = 0; i < invoiceArray.length; i++) {
 
-        const requestBody = {
+        const requestBody: RequestBody = {
           Invoice: {
             InvoiceNumber: invoiceArray[i].InvoiceNumber,
             // InvoiceID: invoiceDetails.InvoiceID,
@@ -92,34 +105,33 @@ export const reconcileMultipleInvoice = async (
           IsReconciled: true,
         };
 
-        const { statusCode, body } = await put({
-          url: XERO_PAYMENTS_URL,
-          // url: `${XERO_INVOICES_URL}?page=${pageNumber}&order=Date%20${orderDate}`,
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${accessToken}`,
-            "xero-tenant-id": xeroTenantId,
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        console.log("reconcileMultipleInvoice | statusCode: " + statusCode);
-        if (statusCode == 200) {
-        // if (ip_amount >= 0) {
-          await firestore.collection("transactionLogs").doc(trans_doc.id).update({
-            listOfReconciledInvoiceIDs: admin.firestore.FieldValue.arrayUnion(invoiceArray[i].InvoiceNumber),
-          });
-        } else {
-          console.log(`ERROR reconcileMultipleInvoice: ${body}`);
-          loopFailed = true;
-          break;
-        }
+        paymentList = paymentList.concat(requestBody);
       }
 
-      // Check again if loop failed && total ip_amount has been matched
-      if (!loopFailed) {
-        // SUCCESS!
+      // Batch request to Xero
+      const { statusCode, body } = await put({
+        url: XERO_PAYMENTS_URL,
+        // url: `${XERO_INVOICES_URL}?page=${pageNumber}&order=Date%20${orderDate}`,
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${accessToken}`,
+          "xero-tenant-id": xeroTenantId,
+        },
+        body: JSON.stringify({"Payments": paymentList}),
+      });
+
+      console.log("reconcileMultipleInvoice | statusCode: " + statusCode);
+      if (statusCode == 200) {
+        // SUCCESS Batch request
+        for (let i = 0; i < invoiceArray.length; i++) {
+            await firestore.collection("transactionLogs").doc(trans_doc.id).update({
+              // change name to ...reconciledInvoiceNumbers
+              listOfReconciledInvoiceIDs: admin.firestore.FieldValue.arrayUnion(invoiceArray[i].InvoiceNumber),
+            });
+        }
+
+        // Update FB transaction reconciled to TRUE
         await firestore.collection("transactionLogs").doc(trans_doc.id).update({
           isReconciled: true,
         });
@@ -130,7 +142,9 @@ export const reconcileMultipleInvoice = async (
           statusCode: 200,
         };
         return (result);
+
       } else {
+        console.log(`reconcileMultipleInvoice | ERROR making batch payments: ${body}`);
         // Revert all actions when failed - NEXT
         const result: ReturnValue = {
           success: false,

@@ -1,20 +1,20 @@
 {
     "invoiceArray": [
         {
-            "InvoiceNumber": "INV-0026",
-            "AmountDue": 200.01
+            "InvoiceNumber": "INV-0813",
+            "AmountDue": 297
         },
         {
-            "InvoiceNumber": "INV-0027",
-            "AmountDue": 200.00
+            "InvoiceNumber": "INV-0814",
+            "AmountDue": 268
         }
     ],
     "paymentDetails": {
         "remarks": "DUMMY paid fee",
         "id": "168",
-        "transaction_date": "2021-11-07 9:35:12pm",
+        "transaction_date": "2022-09-30 9:35:12am",
         "ip_transid": "DUMMY123",
-        "ip_amount": "400.01",
+        "ip_amount": "565",
         "name": "DUMMY",
         "email": "dummy@gmail.com",
         "final_status": "not reconciled"
