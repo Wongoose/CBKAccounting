@@ -10,8 +10,11 @@ export const verifyUserFromCaller = async (request: functions.https.Request, res
   console.log(`Request headers origin is: ${request.headers.origin}`);
 
   if (
-    request.headers.origin == "https://cbkreconciliation.web.app" ||
-    request.headers.origin == "http://127.0.0.1:5501"
+    request.headers.origin == "https://cbkreconciliation.web.app"
+    // request.headers.origin == "http://127.0.0.1:5501" ||
+    // request.headers.origin == "http://127.0.0.1:5500" ||
+    // request.headers.origin == "http://127.0.0.1:5000" ||
+    // request.headers.origin == "http://localhost:5000"
   ) {
     response.setHeader("Access-Control-Allow-Origin", request.headers.origin);
     // response.setHeader("Access-Control-Allow-Origin", "*");
