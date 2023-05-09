@@ -84,5 +84,3 @@ Cloud Functions Google Console Invoker Permission:
 
 Notes:
 - Multer does not work with Firebase Cloud Functions (https://mikesukmanowsky.com/firebase-file-and-image-uploads/)
-- This WebAPI works concurrent with the CBKReconciliation webapp.
-- When debugging, make sure to enable your IP for request.headers.origin in the function "verifyUserFromCaller()" found in helper_auth.ts
