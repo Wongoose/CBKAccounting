@@ -128,10 +128,10 @@ exports.archiveTransaction = functions.https.onRequest(
     const { success, value } = await archiveTransaction(db, ip_transid);
 
     if (success) {
-      console.log("Archived transaction successfull");
-      functions.logger.info("Archived transaction successfull");
-      response.status(200).send(value);
+      console.log(value);
+      response.status(200).send({message: value});
     } else {
+      console.log(`Failed with catch error: ${value}`);
       response.status(500).send({
         error: "ARCHIVE-TRANSACTION-FAIL",
         messsage: value,
@@ -1009,11 +1009,9 @@ exports.getTransactionLogs = functions.https.onRequest(
       }
 
       const showReconciled = request.query["showReconciled"] ?? "true";
-      const boolShow = showReconciled == "true";
-
       const { success, value, statusCode } = await getTransactionLogs(
         db,
-        boolShow
+        showReconciled == "true"
       );
 
       if (success) {

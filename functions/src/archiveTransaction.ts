@@ -10,11 +10,14 @@ export const archiveTransaction = async (
   ): Promise<ReturnValue> => {
     try {
 
-      await firestore.collection("transactionLogs").doc(ip_transid).update({"isArchive": true});
+      const snapshot = await firestore.collection("transactionLogs").where("ip_transid", "==", ip_transid).get();
+
+      snapshot.docs.forEach((doc) => {
+        firestore.collection("transactionLogs").doc(doc.id).update({"isArchive": true});
+      });
 
       const result: ReturnValue = {success: true, value: "Successfully archived transaction!"};
       return (result);
-
     } catch (err) {
       const result: ReturnValue = {
         success: false,
