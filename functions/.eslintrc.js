@@ -38,7 +38,6 @@ module.exports = {
     "camelcase": 0,
     "@typescript-eslint/no-var-requires": 0,
     "@typescript-eslint/no-empty-function": 0,
-    "@typescript-eslint/no-explicit-any": 0,
     "require-jsdoc": 0,
   },
 };
