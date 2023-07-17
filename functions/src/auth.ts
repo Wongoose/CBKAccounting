@@ -11,7 +11,7 @@ export const signInEmailWithLink = async (email: string, redirectUrl: string, au
             return result;
         }
 
-        const resultGetUser = await auth.getUserByEmail(email).catch(function (reason) {
+        const resultGetUser = await auth.getUserByEmail(email).catch(function () {
             console.log("Firebase Auth | Cannot find user by email");
             return null;
         });

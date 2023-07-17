@@ -7,10 +7,12 @@
     "sourceMap": true,
     "strict": true,
     "target": "es2017",
-    "esModuleInterop": false
+    "esModuleInterop": false,
+    "skipLibCheck": true
   },
   "compileOnSave": true,
   "include": [
     "src"
-  ]
+  ],
+  "exclude": ["node_modules"]
 }

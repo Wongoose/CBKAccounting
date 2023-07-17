@@ -188,7 +188,7 @@ export const readCSV = async (filePath: fs.PathOrFileDescriptor) => {
     try {
       Papa.parse(csvData, {
         header: true,
-        complete: (results: any) => {
+        complete: (results: Papa.ParseResult<any>) => {
           console.log("Complete", results.data.length, "records.");
           resolve(results.data);
         },
