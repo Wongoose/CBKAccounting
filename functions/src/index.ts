@@ -30,7 +30,6 @@ import {
 } from "./helper_ui";
 import { verifyUserFromCaller } from "./helper_auth";
 import { reconcileMultipleInvoice } from "./reconcileMultipleInvoice";
-import { archiveTransaction } from "./archiveTransaction";
 
 admin.initializeApp({
   storageBucket: "cbkaccounting.appspot.com",
@@ -112,31 +111,6 @@ exports.xeroManualAuth = functions.https.onRequest(
     // }
     // await open(url);
     // response.status(200).send("Opening Redirect URL");
-  }
-);
-
-exports.archiveTransaction = functions.https.onRequest(
-  async (request, response) => {
-    const verificationSuccess = await verifyUserFromCaller(request, response, auth);
-
-    if (!verificationSuccess) {
-      return;
-    }
-
-    const ip_transid = request.query["iptransid"] as string;
-
-    const { success, value } = await archiveTransaction(db, ip_transid);
-
-    if (success) {
-      console.log("Archived transaction successfull");
-      functions.logger.info("Archived transaction successfull");
-      response.status(200).send(value);
-    } else {
-      response.status(500).send({
-        error: "ARCHIVE-TRANSACTION-FAIL",
-        messsage: value,
-      });
-    }
   }
 );
 
