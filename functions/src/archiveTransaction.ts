@@ -13,7 +13,7 @@ export const archiveTransaction = async (
       const snapshot = await firestore.collection("transactionLogs").where("ip_transid", "==", ip_transid).get();
 
       snapshot.docs.forEach((doc) => {
-        firestore.collection("transactionLogs").doc(doc.id).update({"isArchive": true});
+        firestore.collection("transactionLogs").doc(doc.id).update({"isArchived": true});
       });
 
       const result: ReturnValue = {success: true, value: "Successfully archived transaction!"};

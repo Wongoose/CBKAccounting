@@ -66,7 +66,7 @@ export const getTransactionLogs = async (
         dataMap["final_status"] = finalStatus;
 
         // Filtering manually if archived
-        if (dataMap["isArchive"] == null || dataMap["isArchive"] == false) {
+        if (dataMap["isArchived"] == null || dataMap["isArchived"] == false) {
           transactionLogs.push(dataMap);
         }
       });
